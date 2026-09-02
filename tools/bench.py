@@ -1,4 +1,7 @@
-import chess, time
+import time
+
+import chess
+
 
 def perft(board, depth):
     if depth == 0:
