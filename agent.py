@@ -1,29 +1,69 @@
 """The submission entrypoint. The platform imports this file and calls get_move."""
+# package and test:
+# uv run python -m harness.play --white . --black baselines/greedy
+# uv run python -m harness.package
 
 import random
 
 import chess
 
-# Import time runs once per game, inside a 60 second budget, before your clock starts.
-# Load weights and build tables out here, not inside get_move.
+PIECE_VALUE = {
+    chess.PAWN: 100,
+    chess.KNIGHT: 320,
+    chess.BISHOP: 330,
+    chess.ROOK: 500,
+    chess.QUEEN: 900,
+}
+
+MATE = 1_000_000
+DEPTH = 4
+
+
+def evaluate(board: chess.Board) -> int:
+    """Material balance in centipawns, from the side to move's point of view."""
+    mover = board.turn
+    return sum(
+        value * (len(board.pieces(piece, mover)) - len(board.pieces(piece, not mover)))
+        for piece, value in PIECE_VALUE.items()
+    )
+
+
+def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int) -> int:
+    moves = list(board.legal_moves)
+    if not moves:
+        return -MATE + ply if board.is_check() else 0
+    if depth == 0:
+        return evaluate(board)
+
+    best = -MATE
+    for move in moves:
+        board.push(move)
+        score = -search(board, depth - 1, -beta, -alpha, ply + 1)
+        board.pop()
+        if score > best:
+            best = score
+        if best > alpha:
+            alpha = best
+        if alpha >= beta:
+            break
+    return best
+
+
+def search_root(board: chess.Board, depth: int) -> chess.Move:
+    alpha = -MATE - 1
+    best: list[chess.Move] = []
+    for move in board.legal_moves:
+        board.push(move)
+        score = -search(board, depth - 1, -MATE, -alpha, 1)
+        board.pop()
+        if score > alpha:
+            alpha = score
+            best = [move]
+        elif score == alpha:
+            best.append(move)
+    return random.choice(best)
 
 
 def get_move(fen: str, time_left_ms: int) -> str:
-    """Return a legal move in UCI notation.
-
-    fen           the position to move in; your colour is the side to move
-    time_left_ms  your clock before this move, in milliseconds
-    returns       "e2e4", or "e7e8q" for a promotion
-
-    The process stays alive between your moves, so state you keep on a module or in a
-    closure survives to the next call. It does not survive to the next game.
-
-    print() is safe. Your stdout is redirected away from the protocol stream, discarded
-    during rated games and shown back to you in the validation log.
-    """
     board = chess.Board(fen)
-
-    # Everything from here down is yours to replace. baselines/greedy searches one ply,
-    # baselines/minimax searches two. Neither is strong. Reading them is the fastest way
-    # to see the shape of a search, and beating them is the first real milestone.
-    return random.choice(list(board.legal_moves)).uci()
+    return search_root(board, DEPTH).uci()

@@ -1,9 +1,9 @@
-import time
+﻿import time
 
 import chess
 
 
-def perft(board, depth):
+def perft(board: chess.Board, depth: int) -> int:
     if depth == 0:
         return 1
     total = 0
@@ -12,6 +12,7 @@ def perft(board, depth):
         total += perft(board, depth - 1)
         board.pop()
     return total
+
 
 CASES = [
     ("opening", chess.STARTING_FEN, 4),
@@ -24,4 +25,4 @@ for name, fen, depth in CASES:
     start = time.perf_counter()
     nodes = perft(board, depth)
     elapsed = time.perf_counter() - start
-    print(f"{name:>12} d{depth}: {nodes:>9,} nodes  {elapsed:5.2f}s  {nodes/elapsed:>9,.0f} nps")
+    print(f"{name:>12} d{depth}: {nodes:>9,} nodes  {elapsed:5.2f}s  {nodes / elapsed:>9,.0f} nps")
