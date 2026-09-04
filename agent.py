@@ -1,6 +1,5 @@
 ﻿"""The submission entrypoint. The platform imports this file and calls get_move."""
 
-import random
 import time
 
 import chess
@@ -285,21 +284,19 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
 
 def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Move | None, bool]:
     alpha = -MATE - 1
-    best: list[chess.Move] = []
+    best_move: chess.Move | None = None
     for move in order_moves(board, list(board.legal_moves)):
         board.push(move)
         try:
             score = -search(board, depth - 1, -MATE, -alpha, 1, clock)
         except TimeUp:
             board.pop()
-            return (random.choice(best) if best else None), False
+            return best_move, False
         board.pop()
-        if score > alpha:
+        if best_move is None or score > alpha:
             alpha = score
-            best = [move]
-        elif score == alpha:
-            best.append(move)
-    return (random.choice(best) if best else None), True
+            best_move = move
+    return best_move, True
 
 def quiesce(board: chess.Board, alpha: int, beta: int, clock: Clock) -> int:
     clock.check()
