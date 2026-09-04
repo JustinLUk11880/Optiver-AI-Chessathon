@@ -36,6 +36,15 @@ PHASE_WEIGHT = {
     chess.KING: 0,
 }
 
+MVV_LVA_VALUE = {
+    chess.PAWN: 100,
+    chess.KNIGHT: 300,
+    chess.BISHOP: 300,
+    chess.ROOK: 500,
+    chess.QUEEN: 900,
+    chess.KING: 0,
+}
+
 TOTAL_PHASE = 24
 
 PAWN_MG = [
@@ -239,6 +248,19 @@ def evaluate(board: chess.Board) -> int:
     return score if board.turn == chess.WHITE else -score
 
 
+def move_score(board: chess.Board, move: chess.Move) -> int:
+    victim = board.piece_type_at(move.to_square)
+    if victim is None:
+        return 0
+    attacker = board.piece_type_at(move.from_square)
+    attacker_value = MVV_LVA_VALUE[attacker] if attacker is not None else 0
+    return 10_000 + MVV_LVA_VALUE[victim] * 10 - attacker_value
+
+
+def order_moves(board: chess.Board, moves: list[chess.Move]) -> list[chess.Move]:
+    return sorted(moves, key=lambda m: move_score(board, m), reverse=True)
+
+
 def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, clock: Clock) -> int:
     clock.check()
     moves = list(board.legal_moves)
@@ -248,7 +270,7 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
         return evaluate(board)
 
     best = -MATE
-    for move in moves:
+    for move in order_moves(board, moves):
         board.push(move)
         score = -search(board, depth - 1, -beta, -alpha, ply + 1, clock)
         board.pop()
@@ -264,7 +286,7 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
 def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Move | None, bool]:
     alpha = -MATE - 1
     best: list[chess.Move] = []
-    for move in list(board.legal_moves):
+    for move in order_moves(board, list(board.legal_moves)):
         board.push(move)
         try:
             score = -search(board, depth - 1, -MATE, -alpha, 1, clock)
@@ -294,11 +316,11 @@ def get_move(fen: str, time_left_ms: int) -> str:
 
         for depth in range(1, MAX_DEPTH):
             elapsed = time.perf_counter() - start
-            if depth > 2 and elapsed + last_depth_s * 6 > budget:
+            if depth > 2 and elapsed + last_depth_s * 8 > budget:
                 break
             depth_start = time.perf_counter()
             move, complete = search_root(board, depth, clock)
-            if move is not None:
+            if complete and move is not None:
                 chosen = move.uci()
             if not complete:
                 break
