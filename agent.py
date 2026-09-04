@@ -8,6 +8,9 @@ MATE = 1_000_000
 MAX_DEPTH = 24
 CHECK_INTERVAL = 63
 
+MOPUP_PHASE = 6
+MOPUP_MARGIN = 400
+
 PIECE_VALUE_MG = {
     chess.PAWN: 82,
     chess.KNIGHT: 337,
@@ -196,6 +199,12 @@ TABLE_EG = {
     chess.KING: KING_EG,
 }
 
+CENTER_DISTANCE = [
+    max(3 - chess.square_file(s), chess.square_file(s) - 4)
+    + max(3 - chess.square_rank(s), chess.square_rank(s) - 4)
+    for s in chess.SQUARES
+]
+
 MG_LOOKUP: dict[tuple[bool, int, int], int] = {}
 EG_LOOKUP: dict[tuple[bool, int, int], int] = {}
 
@@ -231,6 +240,19 @@ class Clock:
             raise TimeUp
 
 
+def mopup(board: chess.Board, winner: chess.Color) -> int:
+    """Drive the losing king to the edge and walk the winning king toward it."""
+    loser_king = board.king(not winner)
+    winner_king = board.king(winner)
+    if loser_king is None or winner_king is None:
+        return 0
+    edge = CENTER_DISTANCE[loser_king]
+    gap = abs(chess.square_file(winner_king) - chess.square_file(loser_king)) + abs(
+        chess.square_rank(winner_king) - chess.square_rank(loser_king)
+    )
+    return 5 * edge + 2 * (14 - gap)
+
+
 def evaluate(board: chess.Board) -> int:
     mg = 0
     eg = 0
@@ -244,6 +266,13 @@ def evaluate(board: chess.Board) -> int:
 
     phase = min(phase, TOTAL_PHASE)
     score = (mg * phase + eg * (TOTAL_PHASE - phase)) // TOTAL_PHASE
+
+    if phase <= MOPUP_PHASE and abs(score) > MOPUP_MARGIN:
+        if score > 0:
+            score += mopup(board, chess.WHITE)
+        else:
+            score -= mopup(board, chess.BLACK)
+
     return score if board.turn == chess.WHITE else -score
 
 
@@ -258,6 +287,45 @@ def move_score(board: chess.Board, move: chess.Move) -> int:
 
 def order_moves(board: chess.Board, moves: list[chess.Move]) -> list[chess.Move]:
     return sorted(moves, key=lambda m: move_score(board, m), reverse=True)
+
+
+def quiesce(board: chess.Board, alpha: int, beta: int, clock: Clock) -> int:
+    clock.check()
+
+    if board.is_check():
+        moves = list(board.legal_moves)
+        if not moves:
+            return -MATE
+        best = -MATE
+        for move in order_moves(board, moves):
+            board.push(move)
+            score = -quiesce(board, -beta, -alpha, clock)
+            board.pop()
+            if score > best:
+                best = score
+            if best > alpha:
+                alpha = best
+            if alpha >= beta:
+                break
+        return best
+
+    best = evaluate(board)
+    if best >= beta:
+        return best
+    if best > alpha:
+        alpha = best
+
+    for move in order_moves(board, list(board.generate_legal_captures())):
+        board.push(move)
+        score = -quiesce(board, -beta, -alpha, clock)
+        board.pop()
+        if score > best:
+            best = score
+        if best > alpha:
+            alpha = best
+        if alpha >= beta:
+            break
+    return best
 
 
 def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, clock: Clock) -> int:
@@ -298,43 +366,6 @@ def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Mov
             best_move = move
     return best_move, True
 
-def quiesce(board: chess.Board, alpha: int, beta: int, clock: Clock) -> int:
-    clock.check()
-
-    if board.is_check():
-        moves = list(board.legal_moves)
-        if not moves:
-            return -MATE
-        best = -MATE
-        for move in order_moves(board, moves):
-            board.push(move)
-            score = -quiesce(board, -beta, -alpha, clock)
-            board.pop()
-            if score > best:
-                best = score
-            if best > alpha:
-                alpha = best
-            if alpha >= beta:
-                break
-        return best
-
-    best = evaluate(board)
-    if best >= beta:
-        return best
-    if best > alpha:
-        alpha = best
-
-    for move in order_moves(board, list(board.generate_legal_captures())):
-        board.push(move)
-        score = -quiesce(board, -beta, -alpha, clock)
-        board.pop()
-        if score > best:
-            best = score
-        if best > alpha:
-            alpha = best
-        if alpha >= beta:
-            break
-    return best
 
 def get_move(fen: str, time_left_ms: int) -> str:
     board = chess.Board(fen)
