@@ -267,7 +267,7 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
     if not moves:
         return -MATE + ply if board.is_check() else 0
     if depth == 0:
-        return evaluate(board)
+        return quiesce(board, alpha, beta, clock)
 
     best = -MATE
     for move in order_moves(board, moves):
@@ -301,6 +301,43 @@ def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Mov
             best.append(move)
     return (random.choice(best) if best else None), True
 
+def quiesce(board: chess.Board, alpha: int, beta: int, clock: Clock) -> int:
+    clock.check()
+
+    if board.is_check():
+        moves = list(board.legal_moves)
+        if not moves:
+            return -MATE
+        best = -MATE
+        for move in order_moves(board, moves):
+            board.push(move)
+            score = -quiesce(board, -beta, -alpha, clock)
+            board.pop()
+            if score > best:
+                best = score
+            if best > alpha:
+                alpha = best
+            if alpha >= beta:
+                break
+        return best
+
+    best = evaluate(board)
+    if best >= beta:
+        return best
+    if best > alpha:
+        alpha = best
+
+    for move in order_moves(board, list(board.generate_legal_captures())):
+        board.push(move)
+        score = -quiesce(board, -beta, -alpha, clock)
+        board.pop()
+        if score > best:
+            best = score
+        if best > alpha:
+            alpha = best
+        if alpha >= beta:
+            break
+    return best
 
 def get_move(fen: str, time_left_ms: int) -> str:
     board = chess.Board(fen)
