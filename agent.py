@@ -303,17 +303,17 @@ def order_moves(
     return ordered
 
 
-def quiesce(board: chess.Board, alpha: int, beta: int, clock: Clock) -> int:
+def quiesce(board: chess.Board, alpha: int, beta: int, ply: int, clock: Clock) -> int:
     clock.check()
 
     if board.is_check():
         moves = list(board.legal_moves)
         if not moves:
-            return -MATE
+            return -MATE + ply
         best = -MATE
         for move in order_moves(board, moves):
             board.push(move)
-            score = -quiesce(board, -beta, -alpha, clock)
+            score = -quiesce(board, -beta, -alpha, ply + 1, clock)
             board.pop()
             if score > best:
                 best = score
@@ -331,7 +331,7 @@ def quiesce(board: chess.Board, alpha: int, beta: int, clock: Clock) -> int:
 
     for move in order_moves(board, list(board.generate_legal_captures())):
         board.push(move)
-        score = -quiesce(board, -beta, -alpha, clock)
+        score = -quiesce(board, -beta, -alpha, ply + 1, clock)
         board.pop()
         if score > best:
             best = score
@@ -363,7 +363,7 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
     if not moves:
         return -MATE + ply if board.is_check() else 0
     if depth == 0:
-        return quiesce(board, alpha, beta, clock)
+        return quiesce(board, alpha, beta, ply, clock)
 
     original_alpha = alpha
     best = -MATE
