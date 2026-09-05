@@ -3,6 +3,7 @@
 import time
 
 import chess
+import chess.polyglot
 
 MATE = 1_000_000
 MAX_DEPTH = 24
@@ -10,6 +11,11 @@ CHECK_INTERVAL = 63
 
 MOPUP_PHASE = 6
 MOPUP_MARGIN = 400
+
+TT_EXACT = 0
+TT_LOWER = 1
+TT_UPPER = 2
+TT_MAX_ENTRIES = 2_000_000
 
 PIECE_VALUE_MG = {
     chess.PAWN: 82,
@@ -224,6 +230,8 @@ for _piece in (chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, 
             PIECE_VALUE_EG[_piece] + TABLE_EG[_piece][_square]
         )
 
+TT: dict[int, tuple[int, int, int, chess.Move | None]] = {}
+
 
 class TimeUp(Exception):
     pass
@@ -285,8 +293,14 @@ def move_score(board: chess.Board, move: chess.Move) -> int:
     return 10_000 + MVV_LVA_VALUE[victim] * 10 - attacker_value
 
 
-def order_moves(board: chess.Board, moves: list[chess.Move]) -> list[chess.Move]:
-    return sorted(moves, key=lambda m: move_score(board, m), reverse=True)
+def order_moves(
+    board: chess.Board, moves: list[chess.Move], tt_move: chess.Move | None = None
+) -> list[chess.Move]:
+    ordered = sorted(moves, key=lambda m: move_score(board, m), reverse=True)
+    if tt_move is not None and tt_move in ordered:
+        ordered.remove(tt_move)
+        ordered.insert(0, tt_move)
+    return ordered
 
 
 def quiesce(board: chess.Board, alpha: int, beta: int, clock: Clock) -> int:
@@ -330,30 +344,61 @@ def quiesce(board: chess.Board, alpha: int, beta: int, clock: Clock) -> int:
 
 def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, clock: Clock) -> int:
     clock.check()
+
+    key = chess.polyglot.zobrist_hash(board)
+    tt_move: chess.Move | None = None
+    entry = TT.get(key)
+    if entry is not None:
+        stored_depth, stored_score, stored_flag, stored_move = entry
+        tt_move = stored_move
+        if stored_depth >= depth:
+            if stored_flag == TT_EXACT:
+                return stored_score
+            if stored_flag == TT_LOWER and stored_score >= beta:
+                return stored_score
+            if stored_flag == TT_UPPER and stored_score <= alpha:
+                return stored_score
+
     moves = list(board.legal_moves)
     if not moves:
         return -MATE + ply if board.is_check() else 0
     if depth == 0:
         return quiesce(board, alpha, beta, clock)
 
+    original_alpha = alpha
     best = -MATE
-    for move in order_moves(board, moves):
+    best_move: chess.Move | None = None
+    for move in order_moves(board, moves, tt_move):
         board.push(move)
         score = -search(board, depth - 1, -beta, -alpha, ply + 1, clock)
         board.pop()
         if score > best:
             best = score
+            best_move = move
         if best > alpha:
             alpha = best
         if alpha >= beta:
             break
+
+    if best <= original_alpha:
+        flag = TT_UPPER
+    elif best >= beta:
+        flag = TT_LOWER
+    else:
+        flag = TT_EXACT
+
+    if len(TT) < TT_MAX_ENTRIES:
+        TT[key] = (depth, best, flag, best_move)
+
     return best
 
 
 def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Move | None, bool]:
     alpha = -MATE - 1
     best_move: chess.Move | None = None
-    for move in order_moves(board, list(board.legal_moves)):
+    entry = TT.get(chess.polyglot.zobrist_hash(board))
+    tt_move = entry[3] if entry is not None else None
+    for move in order_moves(board, list(board.legal_moves), tt_move):
         board.push(move)
         try:
             score = -search(board, depth - 1, -MATE, -alpha, 1, clock)
