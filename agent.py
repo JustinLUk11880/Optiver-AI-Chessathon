@@ -373,7 +373,7 @@ def get_move(fen: str, time_left_ms: int) -> str:
 
     try:
         remaining_s = time_left_ms / 1000.0
-        budget = max(0.01, min(remaining_s / 30.0, remaining_s * 0.1))
+        budget = max(0.01, min(remaining_s / 20.0, remaining_s * 0.25))
         start = time.perf_counter()
         clock = Clock(budget)
         chosen = fallback
