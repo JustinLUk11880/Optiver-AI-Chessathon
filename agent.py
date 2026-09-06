@@ -233,6 +233,8 @@ for _piece in (chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, 
         )
 
 TT: dict[int, tuple[int, int, int, chess.Move | None]] = {}
+KILLERS: dict[int, list[chess.Move]] = {}
+HISTORY_SCORE: dict[tuple[int, int], int] = {}
 
 
 class TimeUp(Exception):
@@ -286,23 +288,33 @@ def evaluate(board: chess.Board) -> int:
     return score if board.turn == chess.WHITE else -score
 
 
-def move_score(board: chess.Board, move: chess.Move) -> int:
+def move_score(board: chess.Board, move: chess.Move, ply: int, tt_move: chess.Move | None) -> int:
+    if tt_move is not None and move == tt_move:
+        return 1_000_000
+
     victim = board.piece_type_at(move.to_square)
-    if victim is None:
-        return 0
-    attacker = board.piece_type_at(move.from_square)
-    attacker_value = MVV_LVA_VALUE[attacker] if attacker is not None else 0
-    return 10_000 + MVV_LVA_VALUE[victim] * 10 - attacker_value
+    if victim is not None:
+        attacker = board.piece_type_at(move.from_square)
+        attacker_value = MVV_LVA_VALUE[attacker] if attacker is not None else 0
+        return 100_000 + MVV_LVA_VALUE[victim] * 10 - attacker_value
+
+    killers = KILLERS.get(ply)
+    if killers is not None:
+        if move == killers[0]:
+            return 90_000
+        if len(killers) > 1 and move == killers[1]:
+            return 80_000
+
+    return HISTORY_SCORE.get((move.from_square, move.to_square), 0)
 
 
 def order_moves(
-    board: chess.Board, moves: list[chess.Move], tt_move: chess.Move | None = None
+    board: chess.Board,
+    moves: list[chess.Move],
+    ply: int = 0,
+    tt_move: chess.Move | None = None,
 ) -> list[chess.Move]:
-    ordered = sorted(moves, key=lambda m: move_score(board, m), reverse=True)
-    if tt_move is not None and tt_move in ordered:
-        ordered.remove(tt_move)
-        ordered.insert(0, tt_move)
-    return ordered
+    return sorted(moves, key=lambda m: move_score(board, m, ply, tt_move), reverse=True)
 
 
 def quiesce(board: chess.Board, alpha: int, beta: int, ply: int, clock: Clock) -> int:
@@ -313,7 +325,7 @@ def quiesce(board: chess.Board, alpha: int, beta: int, ply: int, clock: Clock) -
         if not moves:
             return -MATE + ply
         best = -MATE
-        for move in order_moves(board, moves):
+        for move in order_moves(board, moves, ply):
             board.push(move)
             score = -quiesce(board, -beta, -alpha, ply + 1, clock)
             board.pop()
@@ -331,7 +343,7 @@ def quiesce(board: chess.Board, alpha: int, beta: int, ply: int, clock: Clock) -
     if best > alpha:
         alpha = best
 
-    for move in order_moves(board, list(board.generate_legal_captures())):
+    for move in order_moves(board, list(board.generate_legal_captures()), ply):
         board.push(move)
         score = -quiesce(board, -beta, -alpha, ply + 1, clock)
         board.pop()
@@ -366,6 +378,7 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
         return -MATE + ply if board.is_check() else 0
     if depth == 0:
         return quiesce(board, alpha, beta, ply, clock)
+
     if (
         depth >= 3
         and ply > 0
@@ -378,10 +391,12 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
         board.pop()
         if null_score >= beta:
             return null_score
+
     original_alpha = alpha
     best = -MATE
     best_move: chess.Move | None = None
-    for move in order_moves(board, moves, tt_move):
+    for move in order_moves(board, moves, ply, tt_move):
+        quiet = board.piece_type_at(move.to_square) is None
         board.push(move)
         score = -search(board, depth - 1, -beta, -alpha, ply + 1, clock)
         board.pop()
@@ -391,6 +406,13 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
         if best > alpha:
             alpha = best
         if alpha >= beta:
+            if quiet:
+                slot = KILLERS.setdefault(ply, [])
+                if not slot or slot[0] != move:
+                    slot.insert(0, move)
+                    del slot[2:]
+                square_pair = (move.from_square, move.to_square)
+                HISTORY_SCORE[square_pair] = HISTORY_SCORE.get(square_pair, 0) + depth * depth
             break
 
     if best <= original_alpha:
@@ -411,7 +433,7 @@ def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Mov
     best_move: chess.Move | None = None
     entry = TT.get(chess.polyglot.zobrist_hash(board))
     tt_move = entry[3] if entry is not None else None
-    for move in order_moves(board, list(board.legal_moves), tt_move):
+    for move in order_moves(board, list(board.legal_moves), 0, tt_move):
         board.push(move)
         try:
             score = -search(board, depth - 1, -MATE, -alpha, 1, clock)
