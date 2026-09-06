@@ -17,8 +17,6 @@ TT_LOWER = 1
 TT_UPPER = 2
 TT_MAX_ENTRIES = 2_000_000
 
-NULL_MIN_PHASE = 4
-
 PIECE_VALUE_MG = {
     chess.PAWN: 82,
     chess.KNIGHT: 337,
@@ -366,18 +364,7 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
         return -MATE + ply if board.is_check() else 0
     if depth == 0:
         return quiesce(board, alpha, beta, ply, clock)
-    if (
-        depth >= 3
-        and ply > 0
-        and not board.is_check()
-        and beta < MATE - 1000
-        and sum(PHASE_WEIGHT[p.piece_type] for p in board.piece_map().values()) > NULL_MIN_PHASE
-    ):
-        board.push(chess.Move.null())
-        null_score = -search(board, depth - 3, -beta, -beta + 1, ply + 1, clock)
-        board.pop()
-        if null_score >= beta:
-            return null_score
+
     original_alpha = alpha
     best = -MATE
     best_move: chess.Move | None = None
