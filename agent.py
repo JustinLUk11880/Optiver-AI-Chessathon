@@ -235,7 +235,7 @@ for _piece in (chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, 
 TT: dict[int, tuple[int, int, int, chess.Move | None]] = {}
 KILLERS: dict[int, list[chess.Move]] = {}
 HISTORY_SCORE: dict[tuple[int, int], int] = {}
-
+HISTORY: set[int] = set()
 KING_SHIELD_PENALTY = 18
 
 PASSED_BONUS_MG = [0, 5, 10, 20, 35, 60, 100, 0]
@@ -446,6 +446,8 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
     clock.check()
 
     key = chess.polyglot.zobrist_hash(board)
+    if ply > 0 and key in HISTORY:
+        return 0
     tt_move: chess.Move | None = None
     entry = TT.get(key)
     if entry is not None:
@@ -535,6 +537,7 @@ def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Mov
 
 def get_move(fen: str, time_left_ms: int) -> str:
     board = chess.Board(fen)
+    HISTORY.add(chess.polyglot.zobrist_hash(board))
     fallback = next(iter(board.legal_moves)).uci()
 
     try:
