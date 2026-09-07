@@ -295,67 +295,52 @@ def mopup(board: chess.Board, winner: chess.Color) -> int:
     )
     return 5 * edge + 2 * (14 - gap)
 
-def passed_pawns(board: chess.Board) -> tuple[int, int]:
-    """Passed-pawn bonus for White minus Black, as (midgame, endgame)."""
+def evaluate(board: chess.Board) -> int:
+    white_bb = board.occupied_co[chess.WHITE]
+    pawns_bb = board.pawns
+    white_pawns = pawns_bb & white_bb
+    black_pawns = pawns_bb & ~white_bb & board.occupied
+
     mg = 0
     eg = 0
-    white_pawns = board.pawns & board.occupied_co[chess.WHITE]
-    black_pawns = board.pawns & board.occupied_co[chess.BLACK]
+    phase = 0
 
-    for square in chess.scan_forward(white_pawns):
-        if not (PASSED_MASK[(chess.WHITE, square)] & black_pawns):
-            rank = chess.square_rank(square)
-            mg += PASSED_BONUS_MG[rank]
-            eg += PASSED_BONUS_EG[rank]
+    for square, piece in board.piece_map().items():
+        colour = piece.color
+        piece_type = piece.piece_type
+        sign = 1 if colour else -1
+        key = (colour, piece_type, square)
+        mg += sign * MG_LOOKUP[key]
+        eg += sign * EG_LOOKUP[key]
+        phase += PHASE_WEIGHT[piece_type]
 
-    for square in chess.scan_forward(black_pawns):
-        if not (PASSED_MASK[(chess.BLACK, square)] & white_pawns):
-            rank = 7 - chess.square_rank(square)
-            mg -= PASSED_BONUS_MG[rank]
-            eg -= PASSED_BONUS_EG[rank]
+        if piece_type == chess.PAWN:
+            if colour:
+                if not (PASSED_MASK[(True, square)] & black_pawns):
+                    rank = chess.square_rank(square)
+                    mg += PASSED_BONUS_MG[rank]
+                    eg += PASSED_BONUS_EG[rank]
+            else:
+                if not (PASSED_MASK[(False, square)] & white_pawns):
+                    rank = 7 - chess.square_rank(square)
+                    mg -= PASSED_BONUS_MG[rank]
+                    eg -= PASSED_BONUS_EG[rank]
 
-    return mg, eg
-
-def king_safety(board: chess.Board) -> int:
-    """Missing-pawn-shield penalty, White minus Black."""
-    score = 0
-    for colour, sign in ((chess.WHITE, 1), (chess.BLACK, -1)):
-        king = board.king(colour)
-        if king is None:
-            continue
-        rank = chess.square_rank(king)
-        if (colour == chess.WHITE and rank > 2) or (colour == chess.BLACK and rank < 5):
-            continue
-        file = chess.square_file(king)
-        pawns = board.pawns & board.occupied_co[colour]
-        missing = 0
-        for f in range(max(0, file - 1), min(8, file + 2)):
-            if not (chess.BB_FILES[f] & pawns):
-                missing += 1
-        score -= sign * KING_SHIELD_PENALTY * missing
-    return score
-
-def structure(board: chess.Board) -> tuple[int, int]:
-    """Bishop pair, rook files and pawn structure, White minus Black, as (mg, eg)."""
-    mg = 0
-    eg = 0
-    white_pawns = board.pawns & board.occupied_co[chess.WHITE]
-    black_pawns = board.pawns & board.occupied_co[chess.BLACK]
+        elif piece_type == chess.ROOK:
+            file_bb = chess.BB_FILES[chess.square_file(square)]
+            own_pawns = white_pawns if colour else black_pawns
+            if not (file_bb & own_pawns):
+                their_pawns = black_pawns if colour else white_pawns
+                bonus = ROOK_OPEN_FILE if not (file_bb & their_pawns) else ROOK_HALF_OPEN_FILE
+                mg += sign * bonus
+                eg += sign * bonus
 
     for colour, sign in ((chess.WHITE, 1), (chess.BLACK, -1)):
-        own_pawns = white_pawns if colour == chess.WHITE else black_pawns
-        their_pawns = black_pawns if colour == chess.WHITE else white_pawns
+        own_pawns = white_pawns if colour else black_pawns
 
         if len(board.pieces(chess.BISHOP, colour)) >= 2:
             mg += sign * BISHOP_PAIR_MG
             eg += sign * BISHOP_PAIR_EG
-
-        for square in chess.scan_forward(board.rooks & board.occupied_co[colour]):
-            file_bb = chess.BB_FILES[chess.square_file(square)]
-            if not (file_bb & own_pawns):
-                bonus = ROOK_OPEN_FILE if not (file_bb & their_pawns) else ROOK_HALF_OPEN_FILE
-                mg += sign * bonus
-                eg += sign * bonus
 
         for file_index in range(8):
             file_bb = chess.BB_FILES[file_index]
@@ -367,26 +352,16 @@ def structure(board: chess.Board) -> tuple[int, int]:
                 mg += sign * ISOLATED_PAWN_MG * count
                 eg += sign * ISOLATED_PAWN_EG * count
 
-    return mg, eg
-
-def evaluate(board: chess.Board) -> int:
-    mg = 0
-    eg = 0
-    phase = 0
-    for square, piece in board.piece_map().items():
-        sign = 1 if piece.color == chess.WHITE else -1
-        key = (piece.color, piece.piece_type, square)
-        mg += sign * MG_LOOKUP[key]
-        eg += sign * EG_LOOKUP[key]
-        phase += PHASE_WEIGHT[piece.piece_type]
-
-    passed_mg, passed_eg = passed_pawns(board)
-    mg += passed_mg
-    eg += passed_eg
-    mg += king_safety(board)
-    structure_mg, structure_eg = structure(board)
-    mg += structure_mg
-    eg += structure_eg
+        king = board.king(colour)
+        if king is not None:
+            rank = chess.square_rank(king)
+            if (colour and rank <= 2) or (not colour and rank >= 5):
+                file = chess.square_file(king)
+                missing = 0
+                for f in range(max(0, file - 1), min(8, file + 2)):
+                    if not (chess.BB_FILES[f] & own_pawns):
+                        missing += 1
+                mg -= sign * KING_SHIELD_PENALTY * missing
 
     phase = min(phase, TOTAL_PHASE)
     score = (mg * phase + eg * (TOTAL_PHASE - phase)) // TOTAL_PHASE
@@ -398,7 +373,6 @@ def evaluate(board: chess.Board) -> int:
             score -= mopup(board, chess.BLACK)
 
     return score if board.turn == chess.WHITE else -score
-
 
 def move_score(board: chess.Board, move: chess.Move, ply: int, tt_move: chess.Move | None) -> int:
     if tt_move is not None and move == tt_move:
