@@ -236,6 +236,22 @@ TT: dict[int, tuple[int, int, int, chess.Move | None]] = {}
 KILLERS: dict[int, list[chess.Move]] = {}
 HISTORY_SCORE: dict[tuple[int, int], int] = {}
 
+PASSED_BONUS_MG = [0, 5, 10, 20, 35, 60, 100, 0]
+PASSED_BONUS_EG = [0, 15, 25, 45, 75, 120, 180, 0]
+
+PASSED_MASK: dict[tuple[bool, int], int] = {}
+
+for _colour in (chess.WHITE, chess.BLACK):
+    for _sq in chess.SQUARES:
+        _file = chess.square_file(_sq)
+        _rank = chess.square_rank(_sq)
+        _mask = 0
+        for _f in range(max(0, _file - 1), min(8, _file + 2)):
+            _ranks = range(_rank + 1, 8) if _colour == chess.WHITE else range(0, _rank)
+            for _r in _ranks:
+                _mask |= chess.BB_SQUARES[chess.square(_f, _r)]
+        PASSED_MASK[(_colour, _sq)] = _mask
+
 
 class TimeUp(Exception):
     pass
@@ -264,6 +280,26 @@ def mopup(board: chess.Board, winner: chess.Color) -> int:
     )
     return 5 * edge + 2 * (14 - gap)
 
+def passed_pawns(board: chess.Board) -> tuple[int, int]:
+    """Passed-pawn bonus for White minus Black, as (midgame, endgame)."""
+    mg = 0
+    eg = 0
+    white_pawns = board.pawns & board.occupied_co[chess.WHITE]
+    black_pawns = board.pawns & board.occupied_co[chess.BLACK]
+
+    for square in chess.scan_forward(white_pawns):
+        if not (PASSED_MASK[(chess.WHITE, square)] & black_pawns):
+            rank = chess.square_rank(square)
+            mg += PASSED_BONUS_MG[rank]
+            eg += PASSED_BONUS_EG[rank]
+
+    for square in chess.scan_forward(black_pawns):
+        if not (PASSED_MASK[(chess.BLACK, square)] & white_pawns):
+            rank = 7 - chess.square_rank(square)
+            mg -= PASSED_BONUS_MG[rank]
+            eg -= PASSED_BONUS_EG[rank]
+
+    return mg, eg
 
 def evaluate(board: chess.Board) -> int:
     mg = 0
@@ -275,6 +311,10 @@ def evaluate(board: chess.Board) -> int:
         mg += sign * MG_LOOKUP[key]
         eg += sign * EG_LOOKUP[key]
         phase += PHASE_WEIGHT[piece.piece_type]
+
+    passed_mg, passed_eg = passed_pawns(board)
+    mg += passed_mg
+    eg += passed_eg
 
     phase = min(phase, TOTAL_PHASE)
     score = (mg * phase + eg * (TOTAL_PHASE - phase)) // TOTAL_PHASE
