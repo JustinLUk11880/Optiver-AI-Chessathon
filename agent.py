@@ -254,6 +254,19 @@ for _colour in (chess.WHITE, chess.BLACK):
                 _mask |= chess.BB_SQUARES[chess.square(_f, _r)]
         PASSED_MASK[(_colour, _sq)] = _mask
 
+BISHOP_PAIR_MG = 25
+BISHOP_PAIR_EG = 45
+ROOK_OPEN_FILE = 22
+ROOK_HALF_OPEN_FILE = 10
+DOUBLED_PAWN_MG = -12
+DOUBLED_PAWN_EG = -22
+ISOLATED_PAWN_MG = -14
+ISOLATED_PAWN_EG = -18
+
+ADJACENT_FILES = [
+    sum(chess.BB_FILES[f] for f in range(max(0, i - 1), min(8, i + 2)) if f != i)
+    for i in range(8)
+]
 
 class TimeUp(Exception):
     pass
@@ -322,6 +335,40 @@ def king_safety(board: chess.Board) -> int:
         score -= sign * KING_SHIELD_PENALTY * missing
     return score
 
+def structure(board: chess.Board) -> tuple[int, int]:
+    """Bishop pair, rook files and pawn structure, White minus Black, as (mg, eg)."""
+    mg = 0
+    eg = 0
+    white_pawns = board.pawns & board.occupied_co[chess.WHITE]
+    black_pawns = board.pawns & board.occupied_co[chess.BLACK]
+
+    for colour, sign in ((chess.WHITE, 1), (chess.BLACK, -1)):
+        own_pawns = white_pawns if colour == chess.WHITE else black_pawns
+        their_pawns = black_pawns if colour == chess.WHITE else white_pawns
+
+        if len(board.pieces(chess.BISHOP, colour)) >= 2:
+            mg += sign * BISHOP_PAIR_MG
+            eg += sign * BISHOP_PAIR_EG
+
+        for square in chess.scan_forward(board.rooks & board.occupied_co[colour]):
+            file_bb = chess.BB_FILES[chess.square_file(square)]
+            if not (file_bb & own_pawns):
+                bonus = ROOK_OPEN_FILE if not (file_bb & their_pawns) else ROOK_HALF_OPEN_FILE
+                mg += sign * bonus
+                eg += sign * bonus
+
+        for file_index in range(8):
+            file_bb = chess.BB_FILES[file_index]
+            count = bin(file_bb & own_pawns).count("1")
+            if count > 1:
+                mg += sign * DOUBLED_PAWN_MG * (count - 1)
+                eg += sign * DOUBLED_PAWN_EG * (count - 1)
+            if count and not (ADJACENT_FILES[file_index] & own_pawns):
+                mg += sign * ISOLATED_PAWN_MG * count
+                eg += sign * ISOLATED_PAWN_EG * count
+
+    return mg, eg
+
 def evaluate(board: chess.Board) -> int:
     mg = 0
     eg = 0
@@ -337,6 +384,9 @@ def evaluate(board: chess.Board) -> int:
     mg += passed_mg
     eg += passed_eg
     mg += king_safety(board)
+    structure_mg, structure_eg = structure(board)
+    mg += structure_mg
+    eg += structure_eg
 
     phase = min(phase, TOTAL_PHASE)
     score = (mg * phase + eg * (TOTAL_PHASE - phase)) // TOTAL_PHASE

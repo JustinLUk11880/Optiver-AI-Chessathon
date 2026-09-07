@@ -16,13 +16,26 @@ import agent
 #     ("castled, all gone",    "4k3/8/8/8/8/8/8/6K1 w - - 0 1"),
 # ]
 
+# CASES = [
+#     ("W full shield", "rnbqkbnr/pppppppp/8/8/8/8/5PPP/6K1 w - - 0 1"),
+#     ("W g-pawn gone", "rnbqkbnr/pppppppp/8/8/8/8/5P1P/6K1 w - - 0 1"),
+#     ("W no shield",   "rnbqkbnr/pppppppp/8/8/8/8/8/6K1 w - - 0 1"),
+# ]
 CASES = [
-    ("W full shield", "rnbqkbnr/pppppppp/8/8/8/8/5PPP/6K1 w - - 0 1"),
-    ("W g-pawn gone", "rnbqkbnr/pppppppp/8/8/8/8/5P1P/6K1 w - - 0 1"),
-    ("W no shield",   "rnbqkbnr/pppppppp/8/8/8/8/8/6K1 w - - 0 1"),
+    ("bishop pair",   "4k3/8/8/8/8/8/8/2B1KB2 w - - 0 1"),
+    ("two knights",   "4k3/8/8/8/8/8/8/2N1KN2 w - - 0 1"),
+    ("rook open",     "4k3/8/8/8/8/8/8/3RK3 w - - 0 1"),
+    ("rook blocked",  "4k3/8/8/8/8/8/3P4/3RK3 w - - 0 1"),
+    ("doubled pawns", "4k3/8/8/8/8/3P4/3P4/4K3 w - - 0 1"),
+    ("split pawns",   "4k3/8/8/8/8/2P5/3P4/4K3 w - - 0 1"),
+    ("isolated pawn", "4k3/8/8/8/8/8/3P4/4K3 w - - 0 1"),
 ]
 
 for name, fen in CASES:
     board = chess.Board(fen)
-    # print(f"{name:>22}: passed={agent.passed_pawns(board)}  eval={agent.evaluate(board)}")
-    print(f"{name:>22}: shield={agent.king_safety(board)}  eval={agent.evaluate(board)}")
+    print(f"{name:>16}: structure={agent.structure(board)}")
+
+# for name, fen in CASES:
+#     board = chess.Board(fen)
+#     # print(f"{name:>22}: passed={agent.passed_pawns(board)}  eval={agent.evaluate(board)}")
+#     print(f"{name:>22}: shield={agent.king_safety(board)}  eval={agent.evaluate(board)}")
