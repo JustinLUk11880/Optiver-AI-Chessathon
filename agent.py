@@ -236,6 +236,8 @@ TT: dict[int, tuple[int, int, int, chess.Move | None]] = {}
 KILLERS: dict[int, list[chess.Move]] = {}
 HISTORY_SCORE: dict[tuple[int, int], int] = {}
 
+KING_SHIELD_PENALTY = 18
+
 PASSED_BONUS_MG = [0, 5, 10, 20, 35, 60, 100, 0]
 PASSED_BONUS_EG = [0, 15, 25, 45, 75, 120, 180, 0]
 
@@ -301,6 +303,25 @@ def passed_pawns(board: chess.Board) -> tuple[int, int]:
 
     return mg, eg
 
+def king_safety(board: chess.Board) -> int:
+    """Missing-pawn-shield penalty, White minus Black."""
+    score = 0
+    for colour, sign in ((chess.WHITE, 1), (chess.BLACK, -1)):
+        king = board.king(colour)
+        if king is None:
+            continue
+        rank = chess.square_rank(king)
+        if (colour == chess.WHITE and rank > 2) or (colour == chess.BLACK and rank < 5):
+            continue
+        file = chess.square_file(king)
+        pawns = board.pawns & board.occupied_co[colour]
+        missing = 0
+        for f in range(max(0, file - 1), min(8, file + 2)):
+            if not (chess.BB_FILES[f] & pawns):
+                missing += 1
+        score -= sign * KING_SHIELD_PENALTY * missing
+    return score
+
 def evaluate(board: chess.Board) -> int:
     mg = 0
     eg = 0
@@ -315,6 +336,7 @@ def evaluate(board: chess.Board) -> int:
     passed_mg, passed_eg = passed_pawns(board)
     mg += passed_mg
     eg += passed_eg
+    mg += king_safety(board)
 
     phase = min(phase, TOTAL_PHASE)
     score = (mg * phase + eg * (TOTAL_PHASE - phase)) // TOTAL_PHASE
