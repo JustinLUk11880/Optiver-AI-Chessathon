@@ -476,6 +476,8 @@ def quiesce(board: chess.Board, alpha: int, beta: int, ply: int, clock: Clock) -
 
     for move in order_moves(board, list(board.generate_legal_captures()), ply):
         if not endgame:
+            if see_gain(board, move) < 0:
+                continue
             victim = board.piece_type_at(move.to_square)
             gain = MVV_LVA_VALUE[victim] if victim is not None else 0
             if move.promotion:
