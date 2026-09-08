@@ -270,6 +270,7 @@ ADJACENT_FILES = [
 
 DELTA_MARGIN = 200
 
+SHUFFLE_PENALTY = 3
 class TimeUp(Exception):
     pass
 
@@ -373,6 +374,13 @@ def evaluate(board: chess.Board) -> int:
             score += mopup(board, chess.WHITE)
         else:
             score -= mopup(board, chess.BLACK)
+
+    if board.halfmove_clock > 20:
+        drift = (board.halfmove_clock - 20) * SHUFFLE_PENALTY
+        if score > 0:
+            score -= drift
+        elif score < 0:
+            score += drift
 
     return score if board.turn == chess.WHITE else -score
 

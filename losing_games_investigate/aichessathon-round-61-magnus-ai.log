@@ -1,0 +1,73 @@
+AI CHESSATHON MATCH LOG
+=======================
+
+MATCH
+  Round          Rated 61
+  Team           IDK
+  Colour         Black
+  Opponent       Magnus.AI
+  Opening        Reti Opening
+  Start FEN      rnbq1rk1/ppp1bppp/4pn2/3pN3/2P5/6P1/PP1PPPBP/RNBQ1RK1 b - - 6 6
+  You moved      First
+  Machine        w-8a7313
+  Finished       2026-09-08 08:26:21 UTC
+  Match ID       cbb6f172-e1ae-4cc5-99bf-37496127a428
+
+INIT
+  Ready in       0.4 s
+  Budget         90.0 s
+  Used           0 percent
+
+CLOCK
+  Base           120.0 s plus 0.5 s per move
+  Moves          33
+  Time used      72.4 s
+  Slowest        5.6 s on move 22
+  Fastest        0.6 s on move 23
+  Average        2.2 s
+  Left at end    64.1 s
+
+RESULT
+  Lost by checkmate
+  Game lasted 145.9 s
+
+MOVES
+    #  move          time     clock left
+    1  Nbd7          3.3 s      117.2 s
+    2  Nxe5          1.0 s      116.7 s
+    3  Ne4           3.6 s      113.6 s
+    4  dxe4          2.5 s      111.6 s
+    5  Bd7           5.0 s      107.1 s
+    6  Bc6           5.3 s      102.3 s
+    7  Qe8           2.6 s      100.2 s
+    8  Rd8           3.0 s       97.7 s
+    9  a5            0.7 s       97.4 s
+   10  Qxd8          1.2 s       96.7 s
+   11  a4            1.0 s       96.2 s
+   12  Qa8           1.1 s       95.5 s
+   13  g6            1.0 s       95.1 s
+   14  Rd8           1.1 s       94.4 s
+   15  Bxa4          1.6 s       93.3 s
+   16  Bc6           2.5 s       91.3 s
+   17  fxe6          3.5 s       88.3 s
+   18  Kf8           1.9 s       86.9 s
+   19  Ke8           2.0 s       85.4 s
+   20  Rd7           0.9 s       85.0 s
+   21  Bd5           1.0 s       84.5 s
+   22  Rd8           5.6 s       79.4 s
+   23  Bxe6          0.6 s       79.2 s
+   24  Kd7           1.4 s       78.3 s
+   25  Kc6           1.7 s       77.2 s
+   26  Qxd8          1.2 s       76.4 s
+   27  Bf5           0.8 s       76.1 s
+   28  Bd7           1.0 s       75.7 s
+   29  Bg4           0.8 s       75.3 s
+   30  b6            3.1 s       72.7 s
+   31  bxc5          4.8 s       68.3 s
+   32  Kb6           0.7 s       68.2 s
+   33  Ka6           4.6 s       64.1 s
+
+OUTPUT
+  Nothing written to stderr
+
+Email hello@aichessathon.com with this file if anything here is unclear.
