@@ -6,6 +6,7 @@ import chess
 import chess.polyglot
 
 MATE = 1_000_000
+MATE_BOUND = MATE - 1000
 MAX_DEPTH = 24
 CHECK_INTERVAL = 63
 
@@ -18,6 +19,9 @@ TT_UPPER = 2
 TT_MAX_ENTRIES = 2_000_000
 
 NULL_MIN_PHASE = 4
+DELTA_MARGIN = 200
+SHUFFLE_PENALTY = 3
+KING_SHIELD_PENALTY = 18
 
 PIECE_VALUE_MG = {
     chess.PAWN: 82,
@@ -226,12 +230,6 @@ for _piece in (chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, 
         MG_TABLE[_black] = PIECE_VALUE_MG[_piece] + TABLE_MG[_piece][_square]
         EG_TABLE[_black] = PIECE_VALUE_EG[_piece] + TABLE_EG[_piece][_square]
 
-TT: dict[int, tuple[int, int, int, chess.Move | None]] = {}
-KILLERS: dict[int, list[chess.Move]] = {}
-HISTORY_SCORE: dict[tuple[int, int], int] = {}
-HISTORY: set[int] = set()
-KING_SHIELD_PENALTY = 18
-
 PASSED_BONUS_MG = [0, 5, 10, 20, 35, 60, 100, 0]
 PASSED_BONUS_EG = [0, 15, 25, 45, 75, 120, 180, 0]
 
@@ -262,9 +260,12 @@ ADJACENT_FILES = [
     for i in range(8)
 ]
 
-DELTA_MARGIN = 200
+TT: dict[int, tuple[int, int, int, chess.Move | None]] = {}
+KILLERS: dict[int, list[chess.Move]] = {}
+HISTORY_SCORE: dict[tuple[int, int], int] = {}
+HISTORY: set[int] = set()
 
-SHUFFLE_PENALTY = 3
+
 class TimeUp(Exception):
     pass
 
@@ -280,6 +281,22 @@ class Clock:
             raise TimeUp
 
 
+def to_tt(score: int, ply: int) -> int:
+    if score > MATE_BOUND:
+        return score + ply
+    if score < -MATE_BOUND:
+        return score - ply
+    return score
+
+
+def from_tt(score: int, ply: int) -> int:
+    if score > MATE_BOUND:
+        return score - ply
+    if score < -MATE_BOUND:
+        return score + ply
+    return score
+
+
 def mopup(board: chess.Board, winner: chess.Color) -> int:
     """Drive the losing king to the edge and walk the winning king toward it."""
     loser_king = board.king(not winner)
@@ -291,6 +308,7 @@ def mopup(board: chess.Board, winner: chess.Color) -> int:
         chess.square_rank(winner_king) - chess.square_rank(loser_king)
     )
     return 5 * edge + 2 * (14 - gap)
+
 
 def evaluate(board: chess.Board) -> int:
     white_bb = board.occupied_co[chess.WHITE]
@@ -385,6 +403,7 @@ def evaluate(board: chess.Board) -> int:
 
     return score if board.turn == chess.WHITE else -score
 
+
 def move_score(board: chess.Board, move: chess.Move, ply: int, tt_move: chess.Move | None) -> int:
     if tt_move is not None and move == tt_move:
         return 1_000_000
@@ -474,12 +493,13 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
         stored_depth, stored_score, stored_flag, stored_move = entry
         tt_move = stored_move
         if stored_depth >= depth:
+            adjusted = from_tt(stored_score, ply)
             if stored_flag == TT_EXACT:
-                return stored_score
-            if stored_flag == TT_LOWER and stored_score >= beta:
-                return stored_score
-            if stored_flag == TT_UPPER and stored_score <= alpha:
-                return stored_score
+                return adjusted
+            if stored_flag == TT_LOWER and adjusted >= beta:
+                return adjusted
+            if stored_flag == TT_UPPER and adjusted <= alpha:
+                return adjusted
 
     moves = list(board.legal_moves)
     if not moves:
@@ -541,7 +561,7 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
         flag = TT_EXACT
 
     if len(TT) < TT_MAX_ENTRIES:
-        TT[key] = (depth, best, flag, best_move)
+        TT[key] = (depth, to_tt(best, ply), flag, best_move)
 
     return best
 
