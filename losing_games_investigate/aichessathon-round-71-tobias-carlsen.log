@@ -1,0 +1,68 @@
+AI CHESSATHON MATCH LOG
+=======================
+
+MATCH
+  Round          Rated 71
+  Team           IDK
+  Colour         Black
+  Opponent       Tobias Carlsen
+  Opening        French Tarrasch
+  Start FEN      rn2kb1r/pp1q1ppp/5n2/2pp4/3P4/7P/PPPN1PP1/R1BQK1NR w KQkq - 0 8
+  You moved      Second
+  Machine        w-1111ae
+  Finished       2026-09-08 17:21:06 UTC
+  Match ID       dff8c1ab-9388-4eac-8469-39f0e27b9489
+
+INIT
+  Ready in       0.5 s
+  Budget         90.0 s
+  Used           1 percent
+
+CLOCK
+  Base           120.0 s plus 0.5 s per move
+  Moves          28
+  Time used      58.6 s
+  Slowest        6.3 s on move 3
+  Fastest        0.9 s on move 23
+  Average        2.1 s
+  Left at end    75.4 s
+
+RESULT
+  Lost by checkmate
+  Game lasted 141.5 s
+
+MOVES
+    #  move          time     clock left
+    1  Qe7           2.4 s      118.1 s
+    2  Na6           1.7 s      116.9 s
+    3  Ne4           6.3 s      111.2 s
+    4  Naxc5         1.4 s      110.2 s
+    5  O-O-O         2.7 s      108.0 s
+    6  Qf6           3.2 s      105.3 s
+    7  Qh6           3.9 s      101.9 s
+    8  Bxc5          1.2 s      101.2 s
+    9  Nxc5          1.3 s      100.4 s
+   10  Ne6           1.6 s       99.3 s
+   11  Rhe8          2.0 s       97.8 s
+   12  Qf4           1.0 s       97.3 s
+   13  Kb8           1.2 s       96.5 s
+   14  Nd4           1.9 s       95.1 s
+   15  Nxc2          1.5 s       94.1 s
+   16  Ka8           2.9 s       91.7 s
+   17  Rxe8          2.4 s       89.9 s
+   18  Re2           3.9 s       86.5 s
+   19  a6            0.9 s       86.1 s
+   20  Ka7           2.7 s       83.9 s
+   21  Ka8           1.0 s       83.4 s
+   22  Re1+          1.4 s       82.5 s
+   23  Nxe1          0.9 s       82.2 s
+   24  Nxg2          1.7 s       80.9 s
+   25  Nh4           2.7 s       78.7 s
+   26  Kb8           1.6 s       77.6 s
+   27  Ka8           1.8 s       76.3 s
+   28  Ka7           1.4 s       75.4 s
+
+OUTPUT
+  Nothing written to stderr
+
+Email hello@aichessathon.com with this file if anything here is unclear.

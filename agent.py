@@ -403,6 +403,18 @@ def evaluate(board: chess.Board) -> int:
 
     return score if board.turn == chess.WHITE else -score
 
+def see_gain(board: chess.Board, move: chess.Move) -> int:
+    """Net material from a capture, assuming a single recapture."""
+    victim = board.piece_type_at(move.to_square)
+    if victim is None:
+        return 0
+    gain = MVV_LVA_VALUE[victim]
+    attacker = board.piece_type_at(move.from_square)
+    if attacker is None:
+        return gain
+    if board.attackers(not board.turn, move.to_square):
+        gain -= MVV_LVA_VALUE[attacker]
+    return gain
 
 def move_score(board: chess.Board, move: chess.Move, ply: int, tt_move: chess.Move | None) -> int:
     if tt_move is not None and move == tt_move:
@@ -410,9 +422,10 @@ def move_score(board: chess.Board, move: chess.Move, ply: int, tt_move: chess.Mo
 
     victim = board.piece_type_at(move.to_square)
     if victim is not None:
-        attacker = board.piece_type_at(move.from_square)
-        attacker_value = MVV_LVA_VALUE[attacker] if attacker is not None else 0
-        return 100_000 + MVV_LVA_VALUE[victim] * 10 - attacker_value
+        gain = see_gain(board, move)
+        if gain >= 0:
+            return 100_000 + gain
+        return 50_000 + gain
 
     killers = KILLERS.get(ply)
     if killers is not None:

@@ -1,0 +1,89 @@
+AI CHESSATHON MATCH LOG
+=======================
+
+MATCH
+  Round          Rated 73
+  Team           IDK
+  Colour         White
+  Opponent       Benko
+  Opening        English Symmetrical
+  Start FEN      r1bqk2r/pp1pppbp/2n2np1/2p5/2P5/2N2NPP/PP1PPPB1/R1BQK2R b KQkq - 0 6
+  You moved      Second
+  Machine        w-0eae54
+  Finished       2026-09-08 19:28:42 UTC
+  Match ID       d805f7bc-a836-43a0-952c-6e8efcf77539
+
+INIT
+  Ready in       0.6 s
+  Budget         90.0 s
+  Used           1 percent
+
+CLOCK
+  Base           120.0 s plus 0.5 s per move
+  Moves          49
+  Time used      83.0 s
+  Slowest        5.7 s on move 24
+  Fastest        0.6 s on move 45
+  Average        1.7 s
+  Left at end    61.5 s
+
+RESULT
+  Drawn by threefold repetition
+  Game lasted 213.3 s
+
+MOVES
+    #  move          time     clock left
+    1  e4            2.6 s      117.9 s
+    2  O-O           1.8 s      116.7 s
+    3  d3            1.8 s      115.4 s
+    4  Re1           1.6 s      114.4 s
+    5  Nd5           2.0 s      112.9 s
+    6  cxd5          1.4 s      111.9 s
+    7  Rb1           1.3 s      111.2 s
+    8  Nxd4          1.8 s      109.9 s
+    9  Bg5           2.1 s      108.3 s
+   10  Be7           4.4 s      104.4 s
+   11  Bxd6          1.8 s      103.1 s
+   12  Be7           2.2 s      101.4 s
+   13  d6            3.2 s       98.7 s
+   14  Qd2           1.0 s       98.2 s
+   15  Qb4           1.9 s       96.8 s
+   16  dxe7          1.1 s       96.2 s
+   17  Qxb7          1.5 s       95.2 s
+   18  Qa6           1.4 s       94.3 s
+   19  Rbc1          1.4 s       93.3 s
+   20  Rc5           1.6 s       92.2 s
+   21  b4            1.8 s       90.9 s
+   22  Rec1          1.3 s       90.1 s
+   23  Qa5           2.0 s       88.6 s
+   24  R1c4          5.7 s       83.4 s
+   25  Rc1           4.3 s       79.7 s
+   26  R5c4          1.3 s       78.8 s
+   27  Rc8+          1.2 s       78.2 s
+   28  Bf1           1.8 s       76.9 s
+   29  Rxc8          1.2 s       76.2 s
+   30  Rxc6          0.9 s       75.8 s
+   31  Qd8           1.3 s       75.0 s
+   32  Kg2           1.2 s       74.2 s
+   33  Qe7           1.0 s       73.7 s
+   34  Qxe5+         0.8 s       73.5 s
+   35  Bxd3          1.0 s       73.0 s
+   36  h4            1.1 s       72.4 s
+   37  gxh4          1.4 s       71.5 s
+   38  Qf6           1.5 s       70.5 s
+   39  Qf5+          1.5 s       69.5 s
+   40  Qg4+          1.2 s       68.8 s
+   41  Qf5+          2.3 s       67.1 s
+   42  Qg4+          1.1 s       66.5 s
+   43  Qf4           2.4 s       64.6 s
+   44  Qg4+          0.8 s       64.3 s
+   45  Qf4+          0.6 s       64.2 s
+   46  Qg4+          1.3 s       63.4 s
+   47  Qf4+          0.8 s       63.1 s
+   48  Qg4+          1.3 s       62.4 s
+   49  Qf5+          1.4 s       61.5 s
+
+OUTPUT
+  Nothing written to stderr
+
+Email hello@aichessathon.com with this file if anything here is unclear.

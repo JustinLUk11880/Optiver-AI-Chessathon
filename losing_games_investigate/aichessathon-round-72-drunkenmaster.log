@@ -1,0 +1,87 @@
+AI CHESSATHON MATCH LOG
+=======================
+
+MATCH
+  Round          Rated 72
+  Team           IDK
+  Colour         White
+  Opponent       drunkenmaster
+  Opening        Catalan Opening
+  Start FEN      rnbq1rk1/1pp1bppp/4pn2/p2p4/2PP4/5NP1/PP2PPBP/RNBQ1RK1 w - - 0 7
+  You moved      First
+  Machine        w-ecee2f
+  Finished       2026-09-08 18:25:46 UTC
+  Match ID       85502563-14b5-4a93-9171-1f213c14615a
+
+INIT
+  Ready in       0.6 s
+  Budget         90.0 s
+  Used           1 percent
+
+CLOCK
+  Base           120.0 s plus 0.5 s per move
+  Moves          47
+  Time used      84.3 s
+  Slowest        6.5 s on move 1
+  Fastest        0.5 s on move 46
+  Average        1.8 s
+  Left at end    59.2 s
+
+RESULT
+  Lost by checkmate
+  Game lasted 195.0 s
+
+MOVES
+    #  move          time     clock left
+    1  Nc3           6.5 s      114.0 s
+    2  cxd5          1.4 s      113.1 s
+    3  Ne5           3.4 s      110.2 s
+    4  Bf4           1.1 s      109.6 s
+    5  Bxe5          1.8 s      108.4 s
+    6  bxc3          4.7 s      104.2 s
+    7  Rc1           1.2 s      103.4 s
+    8  f3            1.7 s      102.2 s
+    9  c4            2.1 s      100.6 s
+   10  Bxf6          1.3 s       99.8 s
+   11  cxd5          3.1 s       97.2 s
+   12  Rxc7          4.0 s       93.7 s
+   13  d5            1.8 s       92.4 s
+   14  Qc1           3.0 s       90.0 s
+   15  Rf2           1.3 s       89.2 s
+   16  Qc4           2.6 s       87.1 s
+   17  e4            1.1 s       86.5 s
+   18  Qc3           1.0 s       86.0 s
+   19  Qc1           0.9 s       85.6 s
+   20  e5            2.0 s       84.1 s
+   21  f4            2.0 s       82.6 s
+   22  Ra2           1.6 s       81.5 s
+   23  h3            1.9 s       80.1 s
+   24  Rxa3          2.0 s       78.6 s
+   25  Kh2           1.7 s       77.5 s
+   26  Qc4           1.0 s       76.9 s
+   27  d6+           1.2 s       76.2 s
+   28  Rb7           1.4 s       75.3 s
+   29  Rxb6          2.0 s       73.8 s
+   30  Qc7           0.8 s       73.5 s
+   31  dxc7          1.7 s       72.4 s
+   32  h4            1.2 s       71.7 s
+   33  Bd5           1.6 s       70.6 s
+   34  Bf7           1.1 s       70.0 s
+   35  Bd5           2.0 s       68.5 s
+   36  Kh3           1.3 s       67.7 s
+   37  Kg2           0.8 s       67.4 s
+   38  Kf1           1.7 s       66.2 s
+   39  Ke1           0.5 s       66.1 s
+   40  Kf2           1.6 s       65.1 s
+   41  Kg1           0.6 s       65.0 s
+   42  Bb7           1.6 s       63.9 s
+   43  Bd5           3.6 s       60.9 s
+   44  Bf3           0.7 s       60.7 s
+   45  Be2           1.1 s       60.1 s
+   46  Kf1           0.5 s       60.1 s
+   47  Kg1           1.4 s       59.2 s
+
+OUTPUT
+  Nothing written to stderr
+
+Email hello@aichessathon.com with this file if anything here is unclear.
