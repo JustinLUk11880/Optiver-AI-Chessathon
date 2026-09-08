@@ -502,10 +502,15 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
     original_alpha = alpha
     best = -MATE
     best_move: chess.Move | None = None
-    for move in order_moves(board, moves, ply, tt_move):
+    for index, move in enumerate(order_moves(board, moves, ply, tt_move)):
         quiet = board.piece_type_at(move.to_square) is None
         board.push(move)
-        score = -search(board, depth - 1, -beta, -alpha, ply + 1, clock)
+        if index == 0:
+            score = -search(board, depth - 1, -beta, -alpha, ply + 1, clock)
+        else:
+            score = -search(board, depth - 1, -alpha - 1, -alpha, ply + 1, clock)
+            if alpha < score < beta:
+                score = -search(board, depth - 1, -beta, -alpha, ply + 1, clock)
         board.pop()
         if score > best:
             best = score
