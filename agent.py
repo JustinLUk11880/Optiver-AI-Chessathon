@@ -213,24 +213,18 @@ CENTER_DISTANCE = [
     for s in chess.SQUARES
 ]
 
-MG_LOOKUP: dict[tuple[bool, int, int], int] = {}
-EG_LOOKUP: dict[tuple[bool, int, int], int] = {}
+MG_TABLE = [0] * 832
+EG_TABLE = [0] * 832
 
 for _piece in (chess.PAWN, chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN, chess.KING):
     for _square in chess.SQUARES:
         _index = chess.square_mirror(_square)
-        MG_LOOKUP[(chess.WHITE, _piece, _square)] = (
-            PIECE_VALUE_MG[_piece] + TABLE_MG[_piece][_index]
-        )
-        EG_LOOKUP[(chess.WHITE, _piece, _square)] = (
-            PIECE_VALUE_EG[_piece] + TABLE_EG[_piece][_index]
-        )
-        MG_LOOKUP[(chess.BLACK, _piece, _square)] = (
-            PIECE_VALUE_MG[_piece] + TABLE_MG[_piece][_square]
-        )
-        EG_LOOKUP[(chess.BLACK, _piece, _square)] = (
-            PIECE_VALUE_EG[_piece] + TABLE_EG[_piece][_square]
-        )
+        _white = 384 + _piece * 64 + _square
+        _black = _piece * 64 + _square
+        MG_TABLE[_white] = PIECE_VALUE_MG[_piece] + TABLE_MG[_piece][_index]
+        EG_TABLE[_white] = PIECE_VALUE_EG[_piece] + TABLE_EG[_piece][_index]
+        MG_TABLE[_black] = PIECE_VALUE_MG[_piece] + TABLE_MG[_piece][_square]
+        EG_TABLE[_black] = PIECE_VALUE_EG[_piece] + TABLE_EG[_piece][_square]
 
 TT: dict[int, tuple[int, int, int, chess.Move | None]] = {}
 KILLERS: dict[int, list[chess.Move]] = {}
@@ -241,7 +235,7 @@ KING_SHIELD_PENALTY = 18
 PASSED_BONUS_MG = [0, 5, 10, 20, 35, 60, 100, 0]
 PASSED_BONUS_EG = [0, 15, 25, 45, 75, 120, 180, 0]
 
-PASSED_MASK: dict[tuple[bool, int], int] = {}
+PASSED_TABLE = [0] * 128
 
 for _colour in (chess.WHITE, chess.BLACK):
     for _sq in chess.SQUARES:
@@ -252,7 +246,7 @@ for _colour in (chess.WHITE, chess.BLACK):
             _ranks = range(_rank + 1, 8) if _colour == chess.WHITE else range(0, _rank)
             for _r in _ranks:
                 _mask |= chess.BB_SQUARES[chess.square(_f, _r)]
-        PASSED_MASK[(_colour, _sq)] = _mask
+        PASSED_TABLE[(64 if _colour else 0) + _sq] = _mask
 
 BISHOP_PAIR_MG = 25
 BISHOP_PAIR_EG = 45
@@ -311,20 +305,23 @@ def evaluate(board: chess.Board) -> int:
     for square, piece in board.piece_map().items():
         colour = piece.color
         piece_type = piece.piece_type
-        sign = 1 if colour else -1
-        key = (colour, piece_type, square)
-        mg += sign * MG_LOOKUP[key]
-        eg += sign * EG_LOOKUP[key]
+        offset = (384 if colour else 0) + piece_type * 64 + square
+        if colour:
+            mg += MG_TABLE[offset]
+            eg += EG_TABLE[offset]
+        else:
+            mg -= MG_TABLE[offset]
+            eg -= EG_TABLE[offset]
         phase += PHASE_WEIGHT[piece_type]
 
         if piece_type == chess.PAWN:
             if colour:
-                if not (PASSED_MASK[(True, square)] & black_pawns):
+                if not (PASSED_TABLE[64 + square] & black_pawns):
                     rank = chess.square_rank(square)
                     mg += PASSED_BONUS_MG[rank]
                     eg += PASSED_BONUS_EG[rank]
             else:
-                if not (PASSED_MASK[(False, square)] & white_pawns):
+                if not (PASSED_TABLE[square] & white_pawns):
                     rank = 7 - chess.square_rank(square)
                     mg -= PASSED_BONUS_MG[rank]
                     eg -= PASSED_BONUS_EG[rank]
@@ -335,8 +332,12 @@ def evaluate(board: chess.Board) -> int:
             if not (file_bb & own_pawns):
                 their_pawns = black_pawns if colour else white_pawns
                 bonus = ROOK_OPEN_FILE if not (file_bb & their_pawns) else ROOK_HALF_OPEN_FILE
-                mg += sign * bonus
-                eg += sign * bonus
+                if colour:
+                    mg += bonus
+                    eg += bonus
+                else:
+                    mg -= bonus
+                    eg -= bonus
 
     for colour, sign in ((chess.WHITE, 1), (chess.BLACK, -1)):
         own_pawns = white_pawns if colour else black_pawns
