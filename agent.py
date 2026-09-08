@@ -268,6 +268,8 @@ ADJACENT_FILES = [
     for i in range(8)
 ]
 
+DELTA_MARGIN = 200
+
 class TimeUp(Exception):
     pass
 
@@ -429,7 +431,16 @@ def quiesce(board: chess.Board, alpha: int, beta: int, ply: int, clock: Clock) -
     if best > alpha:
         alpha = best
 
+    endgame = board.occupied.bit_count() <= 8
+
     for move in order_moves(board, list(board.generate_legal_captures()), ply):
+        if not endgame:
+            victim = board.piece_type_at(move.to_square)
+            gain = MVV_LVA_VALUE[victim] if victim is not None else 0
+            if move.promotion:
+                gain += 800
+            if best + gain + DELTA_MARGIN < alpha:
+                continue
         board.push(move)
         score = -quiesce(board, -beta, -alpha, ply + 1, clock)
         board.pop()
@@ -542,7 +553,7 @@ def get_move(fen: str, time_left_ms: int) -> str:
 
     try:
         remaining_s = time_left_ms / 1000.0
-        budget = max(0.01, min(remaining_s / 12.0, remaining_s * 0.25))
+        budget = max(0.01, min(remaining_s / 15.0, remaining_s * 0.25))
         start = time.perf_counter()
         clock = Clock(budget)
         chosen = fallback
