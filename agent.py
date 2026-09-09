@@ -25,6 +25,13 @@ TT_MAX_ENTRIES = 2_000_000
 # iteration's work, while guessing high wastes time that is never recovered.
 ITERATION_COST_FACTOR = 3.0
 
+# Never touch the last few seconds, then spend a fixed fraction of what is
+# left. With a 0.5s increment the clock follows r' = 0.9r + 1.0, which settles
+# at 10s remaining -- a higher floor than the previous reserve-less remaining/12
+# (6s), while giving noticeably more time per move whenever the clock is healthy.
+TIME_DIVISOR = 10.0
+TIME_RESERVE = 5.0
+
 NULL_MIN_PHASE = 4
 DELTA_MARGIN = 200
 SHUFFLE_PENALTY = 3
@@ -275,7 +282,10 @@ ZOBRIST_EP_FILE = [_ZOB.getrandbits(64) for _ in range(8)]
 ZOBRIST_TURN = _ZOB.getrandbits(64)
 CASTLE_CACHE: dict[int, int] = {}
 
-PAWN_CACHE_MAX = 100_000
+# ~200 bytes an entry. A long game reaches roughly 120k distinct pawn
+# structures, so 100k bound mid-game and cost hit rate; 400k is ~80MB
+# against a 2GB limit the transposition table barely dents.
+PAWN_CACHE_MAX = 400_000
 PAWN_CACHE: dict[tuple[int, int], tuple[int, int]] = {}
 
 TT: dict[int, tuple[int, int, int, chess.Move | None]] = {}
@@ -908,7 +918,7 @@ def get_move(fen: str, time_left_ms: int) -> str:
 
     try:
         remaining_s = time_left_ms / 1000.0
-        budget = max(0.01, min(remaining_s / 12.0, remaining_s * 0.25))
+        budget = max(0.01, (remaining_s - TIME_RESERVE) / TIME_DIVISOR)
         start = time.perf_counter()
         clock = Clock(budget)
         chosen = fallback
