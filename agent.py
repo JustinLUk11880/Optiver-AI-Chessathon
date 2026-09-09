@@ -265,6 +265,7 @@ KILLERS: dict[int, list[chess.Move]] = {}
 HISTORY_SCORE: dict[tuple[int, int], int] = {}
 HISTORY: set[int] = set()
 
+STABILITY_CUTOFF = 3
 
 class TimeUp(Exception):
     pass
@@ -816,18 +817,23 @@ def get_move(fen: str, time_left_ms: int) -> str:
         chosen = fallback
         last_depth_s = 0.0
 
+        stable = 0
+        previous = ""
         for depth in range(1, MAX_DEPTH):
             elapsed = time.perf_counter() - start
-            if depth > 2 and elapsed + last_depth_s * 8 > budget:
+            limit = budget * (0.5 if stable >= STABILITY_CUTOFF else 1.0)
+            if depth > 2 and elapsed + last_depth_s * 8 > limit:
                 break
             depth_start = time.perf_counter()
             move, complete = search_root(board, depth, clock)
             if complete and move is not None:
                 chosen = move.uci()
+                stable = stable + 1 if chosen == previous else 0
+                previous = chosen
             if not complete:
                 break
             last_depth_s = time.perf_counter() - depth_start
-
+        
         return chosen
     except Exception:
         return fallback
