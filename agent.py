@@ -38,6 +38,9 @@ TIME_RESERVE_FRACTION = 0.25
 NULL_MIN_PHASE = 4
 DELTA_MARGIN = 200
 SHUFFLE_PENALTY = 3
+# The drift below only bites past this many halfmoves, so only past this point
+# does the halfmove clock become part of a position's identity.
+SHUFFLE_START = 20
 KING_SHIELD_PENALTY = 18
 
 PIECE_VALUE_MG = {
@@ -283,6 +286,7 @@ ZOBRIST_PIECE = [_ZOB.getrandbits(64) for _ in range(832)]
 ZOBRIST_CASTLE_SQ = [_ZOB.getrandbits(64) for _ in range(64)]
 ZOBRIST_EP_FILE = [_ZOB.getrandbits(64) for _ in range(8)]
 ZOBRIST_TURN = _ZOB.getrandbits(64)
+ZOBRIST_HALFMOVE = [_ZOB.getrandbits(64) for _ in range(128)]
 CASTLE_CACHE: dict[int, int] = {}
 
 # ~200 bytes an entry. A long game reaches roughly 120k distinct pawn
@@ -365,6 +369,14 @@ def state_key(board: chess.Board) -> int:
     ep = board.ep_square
     if ep is not None:
         key ^= ZOBRIST_EP_FILE[chess.square_file(ep)]
+
+    # evaluate() fades a score toward a draw as the halfmove clock climbs, so
+    # past SHUFFLE_START two positions that differ only in that clock genuinely
+    # evaluate differently and must not share a transposition table entry. Below
+    # it the drift is zero, so the key is left alone and the hit rate is intact.
+    halfmove = board.halfmove_clock
+    if halfmove > SHUFFLE_START:
+        key ^= ZOBRIST_HALFMOVE[halfmove if halfmove < 128 else 127]
 
     return key
 
@@ -552,8 +564,8 @@ def evaluate(board: chess.Board) -> int:
         else:
             score -= mopup(board, chess.BLACK)
 
-    if board.halfmove_clock > 20:
-        drift = (board.halfmove_clock - 20) * SHUFFLE_PENALTY
+    if board.halfmove_clock > SHUFFLE_START:
+        drift = (board.halfmove_clock - SHUFFLE_START) * SHUFFLE_PENALTY
         if score > 0:
             score -= drift
         elif score < 0:
@@ -612,8 +624,8 @@ def evaluate_incr(board: chess.Board, mg: int, eg: int, phase: int) -> int:
         else:
             score -= mopup(board, chess.BLACK)
 
-    if board.halfmove_clock > 20:
-        drift = (board.halfmove_clock - 20) * SHUFFLE_PENALTY
+    if board.halfmove_clock > SHUFFLE_START:
+        drift = (board.halfmove_clock - SHUFFLE_START) * SHUFFLE_PENALTY
         if score > 0:
             score -= drift
         elif score < 0:
