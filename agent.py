@@ -558,14 +558,20 @@ def see_gain(board: chess.Board, move: chess.Move) -> int:
         best_square = -1
         best_value = 10_000
         for square in chess.scan_forward(attackers):
-            value = MVV_LVA_VALUE[board.piece_type_at(square)]
+            piece_type = board.piece_type_at(square)
+            if piece_type is None:
+                continue
+            value = MVV_LVA_VALUE[piece_type]
             if value < best_value:
                 best_value = value
                 best_square = square
         if best_square < 0:
             break
+        next_piece = board.piece_type_at(best_square)
+        if next_piece is None:
+            break
         gains.append(MVV_LVA_VALUE[on_square] - gains[-1])
-        on_square = board.piece_type_at(best_square)
+        on_square = next_piece
         occupied &= ~chess.BB_SQUARES[best_square]
         side = not side
         if len(gains) > 32:
