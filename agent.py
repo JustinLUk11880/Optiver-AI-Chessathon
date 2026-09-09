@@ -1,9 +1,9 @@
 ﻿"""The submission entrypoint. The platform imports this file and calls get_move."""
 
+import random
 import time
 
 import chess
-import chess.polyglot
 
 MATE = 1_000_000
 MATE_BOUND = MATE - 1000
@@ -260,6 +260,14 @@ ADJACENT_FILES = [
     for i in range(8)
 ]
 
+_ZOB = random.Random(0x5EED_1234)
+# Same indexing as MG_TABLE: (384 if white else 0) + piece_type * 64 + square.
+ZOBRIST_PIECE = [_ZOB.getrandbits(64) for _ in range(832)]
+ZOBRIST_CASTLE_SQ = [_ZOB.getrandbits(64) for _ in range(64)]
+ZOBRIST_EP_FILE = [_ZOB.getrandbits(64) for _ in range(8)]
+ZOBRIST_TURN = _ZOB.getrandbits(64)
+CASTLE_CACHE: dict[int, int] = {}
+
 PAWN_CACHE_MAX = 100_000
 PAWN_CACHE: dict[tuple[int, int], tuple[int, int]] = {}
 
@@ -313,11 +321,51 @@ def mopup(board: chess.Board, winner: chess.Color) -> int:
     )
     return 5 * edge + 2 * (14 - gap)
 
-def move_delta(board: chess.Board, move: chess.Move) -> tuple[int, int, int]:
-    """Change in (mg, eg, phase) from playing move. Call BEFORE push."""
+def state_key(board: chess.Board) -> int:
+    """Zobrist contribution of side to move, castling rights and en-passant file.
+
+    Read from the board rather than updated incrementally. These are the parts
+    that a move changes in awkward ways -- rights lost when a rook is captured,
+    the en-passant square appearing and expiring, a null move clearing it -- so
+    deriving them fresh each node removes that whole class of drift. Only piece
+    placement is threaded through move_delta.
+    """
+    key = ZOBRIST_TURN if board.turn else 0
+
+    rights = board.castling_rights
+    if rights:
+        cached = CASTLE_CACHE.get(rights)
+        if cached is None:
+            cached = 0
+            for square in chess.scan_forward(rights):
+                cached ^= ZOBRIST_CASTLE_SQ[square]
+            CASTLE_CACHE[rights] = cached
+        key ^= cached
+
+    ep = board.ep_square
+    if ep is not None:
+        key ^= ZOBRIST_EP_FILE[chess.square_file(ep)]
+
+    return key
+
+
+def placement_key(board: chess.Board) -> int:
+    """Zobrist of piece placement alone, computed from scratch."""
+    key = 0
+    for square, piece in board.piece_map().items():
+        key ^= ZOBRIST_PIECE[(384 if piece.color else 0) + piece.piece_type * 64 + square]
+    return key
+
+
+def full_key(board: chess.Board) -> int:
+    return placement_key(board) ^ state_key(board)
+
+
+def move_delta(board: chess.Board, move: chess.Move) -> tuple[int, int, int, int]:
+    """Change in (mg, eg, phase, placement key) from playing move. Call BEFORE push."""
     mover = board.piece_at(move.from_square)
     if mover is None:
-        return 0, 0, 0
+        return 0, 0, 0, 0
     colour = mover.color
     piece_type = mover.piece_type
     sign = 1 if colour else -1
@@ -326,15 +374,18 @@ def move_delta(board: chess.Board, move: chess.Move) -> tuple[int, int, int]:
     d_mg = 0
     d_eg = 0
     d_phase = 0
+    d_key = 0
 
     from_off = base + piece_type * 64 + move.from_square
     d_mg -= sign * MG_TABLE[from_off]
     d_eg -= sign * EG_TABLE[from_off]
+    d_key ^= ZOBRIST_PIECE[from_off]
 
     landed = move.promotion if move.promotion else piece_type
     to_off = base + landed * 64 + move.to_square
     d_mg += sign * MG_TABLE[to_off]
     d_eg += sign * EG_TABLE[to_off]
+    d_key ^= ZOBRIST_PIECE[to_off]
 
     if move.promotion:
         d_phase += PHASE_WEIGHT[move.promotion] - PHASE_WEIGHT[chess.PAWN]
@@ -344,6 +395,7 @@ def move_delta(board: chess.Board, move: chess.Move) -> tuple[int, int, int]:
         cap_off = (0 if colour else 384) + chess.PAWN * 64 + captured_square
         d_mg -= -sign * MG_TABLE[cap_off]
         d_eg -= -sign * EG_TABLE[cap_off]
+        d_key ^= ZOBRIST_PIECE[cap_off]
     else:
         captured = board.piece_at(move.to_square)
         if captured is not None:
@@ -353,6 +405,7 @@ def move_delta(board: chess.Board, move: chess.Move) -> tuple[int, int, int]:
             d_mg -= cap_sign * MG_TABLE[cap_off]
             d_eg -= cap_sign * EG_TABLE[cap_off]
             d_phase -= PHASE_WEIGHT[captured.piece_type]
+            d_key ^= ZOBRIST_PIECE[cap_off]
 
     if board.is_castling(move):
         if move.to_square > move.from_square:
@@ -365,8 +418,9 @@ def move_delta(board: chess.Board, move: chess.Move) -> tuple[int, int, int]:
         rt = base + chess.ROOK * 64 + rook_to
         d_mg += sign * (MG_TABLE[rt] - MG_TABLE[rf])
         d_eg += sign * (EG_TABLE[rt] - EG_TABLE[rf])
+        d_key ^= ZOBRIST_PIECE[rf] ^ ZOBRIST_PIECE[rt]
 
-    return d_mg, d_eg, d_phase
+    return d_mg, d_eg, d_phase, d_key
 
 def pawn_terms(white_pawns: int, black_pawns: int) -> tuple[int, int]:
     """(mg, eg) for the terms that depend on pawn placement alone.
@@ -634,7 +688,7 @@ def quiesce(
             return -MATE + ply
         best = -MATE
         for move in order_moves(board, moves, ply):
-            d_mg, d_eg, d_phase = move_delta(board, move)
+            d_mg, d_eg, d_phase, _ = move_delta(board, move)
             board.push(move)
             score = -quiesce(
                 board, -beta, -alpha, ply + 1, clock, mg + d_mg, eg + d_eg, phase + d_phase
@@ -666,7 +720,7 @@ def quiesce(
                 gain += 800
             if best + gain + DELTA_MARGIN < alpha:
                 continue
-        d_mg, d_eg, d_phase = move_delta(board, move)
+        d_mg, d_eg, d_phase, _ = move_delta(board, move)
         board.push(move)
         score = -quiesce(
             board, -beta, -alpha, ply + 1, clock, mg + d_mg, eg + d_eg, phase + d_phase
@@ -682,11 +736,11 @@ def quiesce(
 
 def search(
     board: chess.Board, depth: int, alpha: int, beta: int, ply: int, clock: Clock,
-    mg: int, eg: int, phase: int,
+    mg: int, eg: int, phase: int, pkey: int,
 ) -> int:
     clock.check()
 
-    key = chess.polyglot.zobrist_hash(board)
+    key = pkey ^ state_key(board)
     if ply > 0 and key in HISTORY:
         return 0
     tt_move: chess.Move | None = None
@@ -717,7 +771,9 @@ def search(
         and phase > NULL_MIN_PHASE
     ):
         board.push(chess.Move.null())
-        null_score = -search(board, depth - 3, -beta, -beta + 1, ply + 1, clock, mg, eg, phase)
+        null_score = -search(
+            board, depth - 3, -beta, -beta + 1, ply + 1, clock, mg, eg, phase, pkey
+        )
         board.pop()
         if null_score >= beta:
             return null_score
@@ -738,26 +794,29 @@ def search(
                 and board.pawns & chess.BB_SQUARES[move.from_square]
             )
         )
-        d_mg, d_eg, d_phase = move_delta(board, move)
+        d_mg, d_eg, d_phase, d_key = move_delta(board, move)
         nmg, neg, nphase = mg + d_mg, eg + d_eg, phase + d_phase
+        nkey = pkey ^ d_key
         board.push(move)
         if index == 0:
-            score = -search(board, depth - 1, -beta, -alpha, ply + 1, clock, nmg, neg, nphase)
+            score = -search(
+                board, depth - 1, -beta, -alpha, ply + 1, clock, nmg, neg, nphase, nkey
+            )
         else:
             reduction = 0
             if depth >= 3 and index >= 4 and quiet and not board.is_check():
                 reduction = 1
             score = -search(
                 board, depth - 1 - reduction, -alpha - 1, -alpha, ply + 1, clock,
-                nmg, neg, nphase,
+                nmg, neg, nphase, nkey,
             )
             if score > alpha and reduction:
                 score = -search(
-                    board, depth - 1, -alpha - 1, -alpha, ply + 1, clock, nmg, neg, nphase
+                    board, depth - 1, -alpha - 1, -alpha, ply + 1, clock, nmg, neg, nphase, nkey
                 )
             if alpha < score < beta:
                 score = -search(
-                    board, depth - 1, -beta, -alpha, ply + 1, clock, nmg, neg, nphase
+                    board, depth - 1, -beta, -alpha, ply + 1, clock, nmg, neg, nphase, nkey
                 )
         board.pop()
         if score > best:
@@ -802,15 +861,16 @@ def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Mov
 
     alpha = -MATE - 1
     best_move: chess.Move | None = None
-    entry = TT.get(chess.polyglot.zobrist_hash(board))
+    pkey = placement_key(board)
+    entry = TT.get(pkey ^ state_key(board))
     tt_move = entry[3] if entry is not None else None
     for move in order_moves(board, list(board.legal_moves), 0, tt_move):
-        d_mg, d_eg, d_phase = move_delta(board, move)
+        d_mg, d_eg, d_phase, d_key = move_delta(board, move)
         board.push(move)
         try:
             score = -search(
                 board, depth - 1, -MATE, -alpha, 1, clock,
-                mg + d_mg, eg + d_eg, phase + d_phase,
+                mg + d_mg, eg + d_eg, phase + d_phase, pkey ^ d_key,
             )
         except TimeUp:
             board.pop()
@@ -832,7 +892,7 @@ def get_move(fen: str, time_left_ms: int) -> str:
             break
         if not fallback:
             return "0000"
-        HISTORY.add(chess.polyglot.zobrist_hash(board))
+        HISTORY.add(full_key(board))
         KILLERS.clear()
         for square_pair in HISTORY_SCORE:
             HISTORY_SCORE[square_pair] >>= 1

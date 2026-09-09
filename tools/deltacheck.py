@@ -29,7 +29,7 @@ for _game in range(400):
             break
         move = random.choice(moves)
         before = raw(board)
-        delta = agent.move_delta(board, move)
+        delta = agent.move_delta(board, move)[:3]
         board.push(move)
         after = raw(board)
         expected = tuple(b + d for b, d in zip(before, delta, strict=True))        
