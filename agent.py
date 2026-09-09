@@ -36,6 +36,10 @@ TIME_RESERVE = 5.0
 TIME_RESERVE_FRACTION = 0.25
 
 NULL_MIN_PHASE = 4
+# Reverse futility: how far above beta the static score has to sit, per ply, to
+# assume no quiet move can drag it back under.
+REVERSE_FUTILITY_DEPTH = 3
+REVERSE_FUTILITY_MARGIN = 120
 DELTA_MARGIN = 200
 SHUFFLE_PENALTY = 3
 # The drift below only bites past this many halfmoves, so only past this point
@@ -799,6 +803,16 @@ def search(
         return -MATE + ply if board.is_check() else 0
     if depth == 0:
         return quiesce(board, alpha, beta, ply, clock, mg, eg, phase)
+
+    if (
+        depth <= REVERSE_FUTILITY_DEPTH
+        and ply > 0
+        and not board.is_check()
+        and beta < MATE - 1000
+    ):
+        static = evaluate_incr(board, mg, eg, phase)
+        if static - REVERSE_FUTILITY_MARGIN * depth >= beta:
+            return static
 
     if (
         depth >= 3
