@@ -887,7 +887,9 @@ def search(
     return best
 
 
-def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Move | None, bool]:
+def search_root(
+    board: chess.Board, depth: int, clock: Clock
+) -> tuple[chess.Move | None, bool, int]:
     mg = eg = phase = 0
     for square, piece in board.piece_map().items():
         offset = (384 if piece.color else 0) + piece.piece_type * 64 + square
@@ -915,12 +917,12 @@ def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Mov
             )
         except TimeUp:
             board.pop()
-            return best_move, False
+            return best_move, False, alpha
         board.pop()
         if best_move is None or score > alpha:
             alpha = score
             best_move = move
-    return best_move, True
+    return best_move, True, alpha
 
 
 def get_move(fen: str, time_left_ms: int) -> str:
@@ -951,19 +953,25 @@ def get_move(fen: str, time_left_ms: int) -> str:
 
         stable = 0
         previous = ""
+        best_score = -MATE - 1
         for depth in range(1, MAX_DEPTH):
             elapsed = time.perf_counter() - start
             limit = budget * (0.5 if stable >= STABILITY_CUTOFF else 1.0)
             if depth > 2 and elapsed + last_depth_s * ITERATION_COST_FACTOR > limit:
                 break
             depth_start = time.perf_counter()
-            move, complete = search_root(board, depth, clock)
-            if complete and move is not None:
+            move, complete, score = search_root(board, depth, clock)
+            # An aborted iteration still searched the best-ordered root moves.
+            # Trust it only when it beat the last completed depth: a root fail-low
+            # means the alternatives it never reached might be better, and the
+            # previous depth's move is then the best answer available.
+            if move is not None and (complete or score > best_score):
                 chosen = move.uci()
                 stable = stable + 1 if chosen == previous else 0
                 previous = chosen
             if not complete:
                 break
+            best_score = score
             last_depth_s = time.perf_counter() - depth_start
         
         return chosen
