@@ -309,6 +309,60 @@ def mopup(board: chess.Board, winner: chess.Color) -> int:
     )
     return 5 * edge + 2 * (14 - gap)
 
+def move_delta(board: chess.Board, move: chess.Move) -> tuple[int, int, int]:
+    """Change in (mg, eg, phase) from playing move. Call BEFORE push."""
+    mover = board.piece_at(move.from_square)
+    if mover is None:
+        return 0, 0, 0
+    colour = mover.color
+    piece_type = mover.piece_type
+    sign = 1 if colour else -1
+    base = 384 if colour else 0
+
+    d_mg = 0
+    d_eg = 0
+    d_phase = 0
+
+    from_off = base + piece_type * 64 + move.from_square
+    d_mg -= sign * MG_TABLE[from_off]
+    d_eg -= sign * EG_TABLE[from_off]
+
+    landed = move.promotion if move.promotion else piece_type
+    to_off = base + landed * 64 + move.to_square
+    d_mg += sign * MG_TABLE[to_off]
+    d_eg += sign * EG_TABLE[to_off]
+
+    if move.promotion:
+        d_phase += PHASE_WEIGHT[move.promotion] - PHASE_WEIGHT[chess.PAWN]
+
+    if board.is_en_passant(move):
+        captured_square = move.to_square + (-8 if colour else 8)
+        cap_off = (0 if colour else 384) + chess.PAWN * 64 + captured_square
+        d_mg -= -sign * MG_TABLE[cap_off]
+        d_eg -= -sign * EG_TABLE[cap_off]
+    else:
+        captured = board.piece_at(move.to_square)
+        if captured is not None:
+            cap_base = 384 if captured.color else 0
+            cap_off = cap_base + captured.piece_type * 64 + move.to_square
+            cap_sign = 1 if captured.color else -1
+            d_mg -= cap_sign * MG_TABLE[cap_off]
+            d_eg -= cap_sign * EG_TABLE[cap_off]
+            d_phase -= PHASE_WEIGHT[captured.piece_type]
+
+    if board.is_castling(move):
+        if move.to_square > move.from_square:
+            rook_from = move.from_square + 3
+            rook_to = move.from_square + 1
+        else:
+            rook_from = move.from_square - 4
+            rook_to = move.from_square - 1
+        rf = base + chess.ROOK * 64 + rook_from
+        rt = base + chess.ROOK * 64 + rook_to
+        d_mg += sign * (MG_TABLE[rt] - MG_TABLE[rf])
+        d_eg += sign * (EG_TABLE[rt] - EG_TABLE[rf])
+
+    return d_mg, d_eg, d_phase
 
 def evaluate(board: chess.Board) -> int:
     white_bb = board.occupied_co[chess.WHITE]
@@ -403,6 +457,84 @@ def evaluate(board: chess.Board) -> int:
 
     return score if board.turn == chess.WHITE else -score
 
+def evaluate_incr(board: chess.Board, mg: int, eg: int, phase: int) -> int:
+    white_bb = board.occupied_co[chess.WHITE]
+    pawns_bb = board.pawns
+    white_pawns = pawns_bb & white_bb
+    black_pawns = pawns_bb & ~white_bb & board.occupied
+
+    for square in chess.scan_forward(white_pawns):
+        if not (PASSED_TABLE[64 + square] & black_pawns):
+            rank = chess.square_rank(square)
+            mg += PASSED_BONUS_MG[rank]
+            eg += PASSED_BONUS_EG[rank]
+
+    for square in chess.scan_forward(black_pawns):
+        if not (PASSED_TABLE[square] & white_pawns):
+            rank = 7 - chess.square_rank(square)
+            mg -= PASSED_BONUS_MG[rank]
+            eg -= PASSED_BONUS_EG[rank]
+
+    for square in chess.scan_forward(board.rooks & board.occupied):
+        colour = bool(white_bb & chess.BB_SQUARES[square])
+        file_bb = chess.BB_FILES[chess.square_file(square)]
+        own_pawns = white_pawns if colour else black_pawns
+        if not (file_bb & own_pawns):
+            their_pawns = black_pawns if colour else white_pawns
+            bonus = ROOK_OPEN_FILE if not (file_bb & their_pawns) else ROOK_HALF_OPEN_FILE
+            if colour:
+                mg += bonus
+                eg += bonus
+            else:
+                mg -= bonus
+                eg -= bonus
+
+    for colour, sign in ((chess.WHITE, 1), (chess.BLACK, -1)):
+        own_pawns = white_pawns if colour else black_pawns
+
+        if len(board.pieces(chess.BISHOP, colour)) >= 2:
+            mg += sign * BISHOP_PAIR_MG
+            eg += sign * BISHOP_PAIR_EG
+
+        for file_index in range(8):
+            file_bb = chess.BB_FILES[file_index]
+            count = bin(file_bb & own_pawns).count("1")
+            if count > 1:
+                mg += sign * DOUBLED_PAWN_MG * (count - 1)
+                eg += sign * DOUBLED_PAWN_EG * (count - 1)
+            if count and not (ADJACENT_FILES[file_index] & own_pawns):
+                mg += sign * ISOLATED_PAWN_MG * count
+                eg += sign * ISOLATED_PAWN_EG * count
+
+        king = board.king(colour)
+        if king is not None:
+            rank = chess.square_rank(king)
+            if (colour and rank <= 2) or (not colour and rank >= 5):
+                file = chess.square_file(king)
+                missing = 0
+                for f in range(max(0, file - 1), min(8, file + 2)):
+                    if not (chess.BB_FILES[f] & own_pawns):
+                        missing += 1
+                mg -= sign * KING_SHIELD_PENALTY * missing
+
+    phase = min(phase, TOTAL_PHASE)
+    score = (mg * phase + eg * (TOTAL_PHASE - phase)) // TOTAL_PHASE
+
+    if phase <= MOPUP_PHASE and abs(score) > MOPUP_MARGIN:
+        if score > 0:
+            score += mopup(board, chess.WHITE)
+        else:
+            score -= mopup(board, chess.BLACK)
+
+    if board.halfmove_clock > 20:
+        drift = (board.halfmove_clock - 20) * SHUFFLE_PENALTY
+        if score > 0:
+            score -= drift
+        elif score < 0:
+            score += drift
+
+    return score if board.turn == chess.WHITE else -score
+
 def see_gain(board: chess.Board, move: chess.Move) -> int:
     """Net material from a capture, assuming a single recapture."""
     victim = board.piece_type_at(move.to_square)
@@ -445,8 +577,10 @@ def order_moves(
 ) -> list[chess.Move]:
     return sorted(moves, key=lambda m: move_score(board, m, ply, tt_move), reverse=True)
 
-
-def quiesce(board: chess.Board, alpha: int, beta: int, ply: int, clock: Clock) -> int:
+def quiesce(
+    board: chess.Board, alpha: int, beta: int, ply: int, clock: Clock,
+    mg: int, eg: int, phase: int,
+) -> int:
     clock.check()
 
     if board.is_check():
@@ -455,8 +589,11 @@ def quiesce(board: chess.Board, alpha: int, beta: int, ply: int, clock: Clock) -
             return -MATE + ply
         best = -MATE
         for move in order_moves(board, moves, ply):
+            d_mg, d_eg, d_phase = move_delta(board, move)
             board.push(move)
-            score = -quiesce(board, -beta, -alpha, ply + 1, clock)
+            score = -quiesce(
+                board, -beta, -alpha, ply + 1, clock, mg + d_mg, eg + d_eg, phase + d_phase
+            )
             board.pop()
             if score > best:
                 best = score
@@ -466,7 +603,7 @@ def quiesce(board: chess.Board, alpha: int, beta: int, ply: int, clock: Clock) -
                 break
         return best
 
-    best = evaluate(board)
+    best = evaluate_incr(board, mg, eg, phase)
     if best >= beta:
         return best
     if best > alpha:
@@ -484,8 +621,11 @@ def quiesce(board: chess.Board, alpha: int, beta: int, ply: int, clock: Clock) -
                 gain += 800
             if best + gain + DELTA_MARGIN < alpha:
                 continue
+        d_mg, d_eg, d_phase = move_delta(board, move)
         board.push(move)
-        score = -quiesce(board, -beta, -alpha, ply + 1, clock)
+        score = -quiesce(
+            board, -beta, -alpha, ply + 1, clock, mg + d_mg, eg + d_eg, phase + d_phase
+        )
         board.pop()
         if score > best:
             best = score
@@ -495,8 +635,10 @@ def quiesce(board: chess.Board, alpha: int, beta: int, ply: int, clock: Clock) -
             break
     return best
 
-
-def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, clock: Clock) -> int:
+def search(
+    board: chess.Board, depth: int, alpha: int, beta: int, ply: int, clock: Clock,
+    mg: int, eg: int, phase: int,
+) -> int:
     clock.check()
 
     key = chess.polyglot.zobrist_hash(board)
@@ -520,17 +662,17 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
     if not moves:
         return -MATE + ply if board.is_check() else 0
     if depth == 0:
-        return quiesce(board, alpha, beta, ply, clock)
+        return quiesce(board, alpha, beta, ply, clock, mg, eg, phase)
 
     if (
         depth >= 3
         and ply > 0
         and not board.is_check()
         and beta < MATE - 1000
-        and sum(PHASE_WEIGHT[p.piece_type] for p in board.piece_map().values()) > NULL_MIN_PHASE
+        and phase > NULL_MIN_PHASE
     ):
         board.push(chess.Move.null())
-        null_score = -search(board, depth - 3, -beta, -beta + 1, ply + 1, clock)
+        null_score = -search(board, depth - 3, -beta, -beta + 1, ply + 1, clock, mg, eg, phase)
         board.pop()
         if null_score >= beta:
             return null_score
@@ -538,20 +680,30 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
     original_alpha = alpha
     best = -MATE
     best_move: chess.Move | None = None
+
     for index, move in enumerate(order_moves(board, moves, ply, tt_move)):
         quiet = board.piece_type_at(move.to_square) is None
+        d_mg, d_eg, d_phase = move_delta(board, move)
+        nmg, neg, nphase = mg + d_mg, eg + d_eg, phase + d_phase
         board.push(move)
         if index == 0:
-            score = -search(board, depth - 1, -beta, -alpha, ply + 1, clock)
+            score = -search(board, depth - 1, -beta, -alpha, ply + 1, clock, nmg, neg, nphase)
         else:
             reduction = 0
             if depth >= 3 and index >= 4 and quiet and not board.is_check():
                 reduction = 1
-            score = -search(board, depth - 1 - reduction, -alpha - 1, -alpha, ply + 1, clock)
+            score = -search(
+                board, depth - 1 - reduction, -alpha - 1, -alpha, ply + 1, clock,
+                nmg, neg, nphase,
+            )
             if score > alpha and reduction:
-                score = -search(board, depth - 1, -alpha - 1, -alpha, ply + 1, clock)
+                score = -search(
+                    board, depth - 1, -alpha - 1, -alpha, ply + 1, clock, nmg, neg, nphase
+                )
             if alpha < score < beta:
-                score = -search(board, depth - 1, -beta, -alpha, ply + 1, clock)
+                score = -search(
+                    board, depth - 1, -beta, -alpha, ply + 1, clock, nmg, neg, nphase
+                )
         board.pop()
         if score > best:
             best = score
@@ -582,14 +734,29 @@ def search(board: chess.Board, depth: int, alpha: int, beta: int, ply: int, cloc
 
 
 def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Move | None, bool]:
+    mg = eg = phase = 0
+    for square, piece in board.piece_map().items():
+        offset = (384 if piece.color else 0) + piece.piece_type * 64 + square
+        if piece.color:
+            mg += MG_TABLE[offset]
+            eg += EG_TABLE[offset]
+        else:
+            mg -= MG_TABLE[offset]
+            eg -= EG_TABLE[offset]
+        phase += PHASE_WEIGHT[piece.piece_type]
+
     alpha = -MATE - 1
     best_move: chess.Move | None = None
     entry = TT.get(chess.polyglot.zobrist_hash(board))
     tt_move = entry[3] if entry is not None else None
     for move in order_moves(board, list(board.legal_moves), 0, tt_move):
+        d_mg, d_eg, d_phase = move_delta(board, move)
         board.push(move)
         try:
-            score = -search(board, depth - 1, -MATE, -alpha, 1, clock)
+            score = -search(
+                board, depth - 1, -MATE, -alpha, 1, clock,
+                mg + d_mg, eg + d_eg, phase + d_phase,
+            )
         except TimeUp:
             board.pop()
             return best_move, False
