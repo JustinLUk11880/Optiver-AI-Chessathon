@@ -1,0 +1,80 @@
+round,colour,opponent,result,termination,init_s,moves,time_used_s,slowest_s,fastest_s,average_s,clock_left_s,machine,finished_at
+Rated 79,Black,Karvaxis,Win,Checkmate,0.5,55,93.6,7.0,0.7,1.7,53.9,w-978b07,2026-09-09T10:25:28.904338+00:00
+Rated 78,Black,Prompt and Circumstance,Loss,Checkmate,0.5,44,79.2,4.4,0.6,1.8,62.8,w-d5046c,2026-09-09T09:21:25.986856+00:00
+Rated 77,White,darKnight,Win,Checkmate,0.5,73,108.6,4.6,0.5,1.5,47.9,w-7e09b1,2026-09-09T08:26:43.285758+00:00
+Rated 76,Black,Epoch & Mate,Draw,Fifty moves,0.5,121,146.1,5.8,0.4,1.2,34.4,w-2fa33d,2026-09-09T07:28:54.473818+00:00
+Rated 75,White,Chelsea's very own JP Morgan,Win,Checkmate,0.6,46,83.2,5.4,0.8,1.8,59.8,w-281221,2026-09-08T21:26:54.171912+00:00
+Rated 74,Black,0x88,Win,Checkmate,0.8,38,78.1,5.4,0.8,2.1,60.9,w-02013e,2026-09-08T20:28:20.741343+00:00
+Rated 73,White,Benko,Draw,Threefold repetition,0.6,49,83.0,5.7,0.6,1.7,61.5,w-0eae54,2026-09-08T19:28:42.911382+00:00
+Rated 72,White,drunkenmaster,Loss,Checkmate,0.6,47,84.3,6.5,0.5,1.8,59.2,w-ecee2f,2026-09-08T18:25:46.759929+00:00
+Rated 71,Black,Tobias Carlsen,Loss,Checkmate,0.5,28,58.6,6.3,0.9,2.1,75.4,w-1111ae,2026-09-08T17:21:06.043121+00:00
+Rated 70,White,Rohan,Win,Checkmate,0.5,49,85.4,5.5,0.6,1.7,59.1,w-2742fe,2026-09-08T16:26:09.738327+00:00
+Rated 69,Black,AI < human,Loss,Checkmate,0.5,29,57.3,5.5,0.8,2.0,77.2,w-0914e8,2026-09-08T15:20:38.368785+00:00
+Rated 68,Black,Sunfish,Win,Checkmate,0.5,71,107.8,4.2,0.5,1.5,47.7,w-2742fe,2026-09-08T14:27:38.50308+00:00
+Rated 67,White,DanyaTheGoat,Win,Checkmate,0.5,74,115.8,5.8,0.4,1.6,41.2,w-0914e8,2026-09-08T13:30:29.383636+00:00
+Rated 66,White,Sher hi kehde,Loss,Checkmate,0.5,58,94.8,6.5,0.5,1.6,54.3,w-4e0f8c,2026-09-08T12:27:19.456466+00:00
+Rated 65,Black,blue school baddies,Loss,Checkmate,0.5,53,101.7,4.9,0.5,1.9,44.8,w-2118a6,2026-09-08T11:25:35.236837+00:00
+Rated 64,White,Obligatory En Passant,Win,Checkmate,0.5,28,59.7,4.6,0.8,2.1,74.3,w-2742fe,2026-09-08T10:26:55.572198+00:00
+Rated 63,Black,hyperfish,Loss,Checkmate,0.6,46,84.9,7.5,0.6,1.8,58.1,w-de0e76,2026-09-08T09:31:54.151649+00:00
+Rated 62,White,Checkmate99,Win,Checkmate,0.5,25,64.1,8.0,0.8,2.6,68.4,w-642868,2026-09-08T08:45:07.624937+00:00
+Rated 61,Black,Magnus.AI,Loss,Checkmate,0.4,33,72.4,5.6,0.6,2.2,64.1,w-8a7313,2026-09-08T08:26:21.962553+00:00
+Rated 60,White,ScholarsMate,Draw,Fifty moves,0.5,117,152.7,4.8,0.3,1.3,25.8,w-52d6d4,2026-09-07T21:35:31.490352+00:00
+Rated 59,Black,Hanging Pawns,Loss,Checkmate,0.5,65,125.4,8.1,0.3,1.9,27.1,w-0a44b0,2026-09-07T20:31:56.126855+00:00
+Rated 58,White,zenith,Win,Checkmate,0.7,37,92.6,8.9,0.5,2.5,45.9,w-791165,2026-09-07T19:30:23.856692+00:00
+Rated 57,Black,The Greeks Gambit,Win,Checkmate,0.7,59,110.8,4.0,0.5,1.9,38.7,w-791165,2026-09-07T18:34:33.22834+00:00
+Rated 56,White,NullGambit,Loss,Checkmate,0.7,83,132.7,5.8,0.3,1.6,28.8,w-69aab8,2026-09-07T17:32:56.219647+00:00
+Rated 55,Black,Prompt and Circumstance,Win,Checkmate,0.5,52,109.0,7.7,0.8,2.1,37.0,w-7733ab,2026-09-07T16:33:14.711402+00:00
+Rated 54,Black,Chelsea's very own JP Morgan,Loss,Checkmate,0.5,37,84.4,5.5,0.8,2.3,54.1,w-b524ed,2026-09-07T15:28:46.905329+00:00
+Rated 53,White,Vanish Onigiri,Loss,Checkmate,0.6,62,110.3,7.3,0.5,1.8,40.7,w-77f393,2026-09-07T14:25:58.183672+00:00
+Rated 52,Black,0x88,Win,Illegal,0.7,30,66.3,5.4,1.1,2.2,68.7,w-3a623b,2026-09-07T13:30:13.175287+00:00
+Rated 51,White,Team2,Win,Checkmate,0.5,43,97.4,8.6,0.5,2.3,44.1,w-5fdd24,2026-09-07T12:34:32.047373+00:00
+Rated 50,Black,404 Not Found,Loss,Checkmate,0.5,29,78.1,6.7,0.7,2.7,56.4,w-0527f7,2026-09-07T11:31:46.613085+00:00
+Rated 49,White,Obligatory En Passant,Draw,Threefold repetition,0.5,60,106.4,5.2,0.5,1.8,43.6,w-77f393,2026-09-07T10:34:22.645317+00:00
+Rated 48,White,Tunir,Loss,Checkmate,0.5,16,47.4,8.8,1.1,3.0,80.6,w-0527f7,2026-09-07T09:27:53.800499+00:00
+Rated 47,White,team,Draw,Threefold repetition,0.5,74,128.2,6.9,0.4,1.7,28.8,w-52d6d4,2026-09-07T08:29:06.177208+00:00
+Rated 46,Black,Little Gambit,Loss,Checkmate,0.5,83,136.6,6.9,0.3,1.6,24.9,w-9e67d0,2026-09-07T07:26:44.082005+00:00
+Rated 45,White,Chelsea's very own JP Morgan,Win,Checkmate,0.5,42,76.0,5.5,0.6,1.8,65.0,w-ec11e6,2026-09-06T21:25:28.599335+00:00
+Rated 44,Black,darKnight,Loss,Checkmate,0.5,25,50.6,6.6,0.7,2.0,81.9,w-03daa0,2026-09-06T20:21:00.001595+00:00
+Rated 43,White,blundered my queen 💔,Loss,Checkmate,0.6,37,74.6,4.8,0.6,2.0,63.9,w-3535e1,2026-09-06T19:18:54.474334+00:00
+Rated 42,Black,Magnus CarlSON 😭,Win,Checkmate,0.5,27,59.1,6.7,0.7,2.2,74.4,w-d354c5,2026-09-06T18:21:29.316383+00:00
+Rated 41,White,Martin,Win,Checkmate,0.6,37,70.1,5.0,0.8,1.9,68.4,w-d88909,2026-09-06T17:26:11.14161+00:00
+Rated 40,Black,ACESOFSPADES,Win,Checkmate,0.5,62,100.7,7.6,0.4,1.6,50.3,w-5d6f85,2026-09-06T16:30:12.485341+00:00
+Rated 39,Black,Ablation,Loss,Checkmate,0.5,21,47.3,5.1,1.0,2.3,83.2,w-efd8bb,2026-09-06T15:25:19.287841+00:00
+Rated 38,Black,Dio,Loss,Checkmate,0.6,28,60.7,6.0,0.7,2.2,73.3,w-42b8f8,2026-09-06T14:24:51.163324+00:00
+Rated 37,White,OpenAnand,Win,Checkmate,0.5,42,76.1,5.4,0.6,1.8,64.9,w-6272d4,2026-09-06T13:27:26.989521+00:00
+Rated 36,Black,Alpha Knights,Loss,Checkmate,0.5,34,64.5,6.0,0.6,1.9,72.5,w-5d6f85,2026-09-06T12:23:34.723159+00:00
+Rated 35,Black,Prophylaxis,Win,Checkmate,0.5,23,49.2,5.5,0.8,2.1,82.3,w-0755a4,2026-09-06T11:25:53.369375+00:00
+Rated 34,White,Neophyte Doge,Draw,Threefold repetition,0.5,17,36.3,5.1,0.9,2.1,92.2,w-42b8f8,2026-09-06T10:27:53.594412+00:00
+Rated 33,Black,persidian,Win,Checkmate,0.4,42,84.9,5.0,0.5,2.0,56.1,w-7793b4,2026-09-06T09:16:49.910745+00:00
+Rated 32,White,Sunfish,Loss,Checkmate,0.5,36,68.0,5.6,0.6,1.9,70.0,w-ec769b,2026-09-06T08:24:20.395022+00:00
+Rated 31,White,Team2,Win,Checkmate,0.5,41,71.6,5.3,0.5,1.7,68.9,w-7793b4,2026-09-06T07:27:24.428548+00:00
+Rated 30,Black,En Passant,Win,Checkmate,0.6,52,91.5,5.5,0.6,1.8,54.5,w-682c3a,2026-09-05T21:26:23.60093+00:00
+Rated 29,White,Snake,Win,Checkmate,0.5,30,60.0,4.8,0.6,2.0,75.0,w-6c1e7e,2026-09-05T20:28:39.715386+00:00
+Rated 28,White,Carro-Kans,Loss,Checkmate,0.5,46,78.5,5.6,0.5,1.7,64.5,w-5ff11d,2026-09-05T19:26:05.016546+00:00
+Rated 27,Black,AlphaGambit,Loss,Checkmate,0.5,23,49.0,5.3,0.6,2.1,82.5,w-998ebe,2026-09-05T18:22:49.828355+00:00
+Rated 26,White,How does the knight move?,Loss,Checkmate,0.5,62,91.5,5.4,0.4,1.5,59.5,w-682c3a,2026-09-05T17:22:40.14529+00:00
+Rated 25,White,CCC,Void,Unterminated,0.5,41,72.7,4.8,0.0,1.8,67.8,w-94f091,2026-09-05T16:21:33.717887+00:00
+Rated 24,Black,OatMilk,Loss,Checkmate,0.5,32,55.1,6.0,0.5,1.7,80.9,w-9d34f8,2026-09-05T15:20:44.822204+00:00
+Rated 23,Black,Cheeky,Win,Checkmate,0.5,36,72.8,4.6,0.6,2.0,65.2,w-ea5cae,2026-09-05T14:20:39.792602+00:00
+Rated 22,White,Martin,Win,Checkmate,0.6,63,106.7,4.7,0.4,1.7,44.8,w-a530fa,2026-09-05T13:24:53.383946+00:00
+Rated 21,Black,LeoMax,Void,Unterminated,0.6,41,74.9,3.6,0.7,1.8,65.6,w-dd56b5,2026-09-05T12:22:23.131361+00:00
+Rated 20,White,CPAE,Win,Checkmate,0.6,36,79.4,5.8,0.5,2.2,58.6,w-fe39e1,2026-09-05T11:22:03.663802+00:00
+Rated 19,Black,Team name,Win,Checkmate,0.6,16,22.1,3.0,0.6,1.4,105.9,w-fe39e1,2026-09-05T10:21:45.407793+00:00
+Rated 18,Black,Fried Liver Defence,Win,Checkmate,0.5,26,28.9,2.5,0.5,1.1,104.1,w-c53946,2026-09-05T09:23:42.689684+00:00
+Rated 17,White,Sweat,Win,Checkmate,0.5,28,34.9,3.8,0.4,1.2,99.1,w-d1da36,2026-09-05T08:23:29.066654+00:00
+Rated 16,White,Surya prabha,Void,Unterminated,0.5,8,7.2,1.2,0.7,0.9,116.8,w-705ff3,2026-09-05T07:29:22.371551+00:00
+Rated 15,Black,Chesstosterone,Void,Unterminated,0.5,47,58.4,3.4,0.5,1.2,85.1,w-2b4afc,2026-09-04T21:31:31.035619+00:00
+Rated 14,White,0x88,Loss,Checkmate,0.5,43,53.1,3.0,0.4,1.2,88.4,w-940ac8,2026-09-04T20:29:28.388292+00:00
+Rated 13,Black,PlayOps,Win,Checkmate,0.5,38,63.2,3.9,0.5,1.7,75.8,w-940ac8,2026-09-04T19:31:34.615704+00:00
+Rated 12,Black,Egill40,Win,Checkmate,0.4,23,30.5,3.5,0.5,1.3,101.0,w-4e8c1d,2026-09-04T18:28:12.216037+00:00
+Rated 11,White,Oxchess,Void,Unterminated,0.6,48,68.1,3.5,0.3,1.4,75.9,w-a99c3d,2026-09-04T17:28:28.457242+00:00
+Rated 10,White,fm2,Win,Checkmate,0.6,33,45.0,3.5,0.5,1.4,91.5,w-2b4afc,2026-09-04T16:28:39.178758+00:00
+Rated 9,Black,Blitz,Loss,Checkmate,,66,80.3,4.0,0.4,1.2,72.7,w-940ac8,2026-09-04T15:26:33.904321+00:00
+Rated 8,Black,kronos,Win,Checkmate,,20,26.5,3.6,0.5,1.3,103.5,w-75c226,2026-09-04T14:45:43.376777+00:00
+Rated 7,White,Minimax Three,Void,Unterminated,,26,43.0,4.0,0.4,1.7,90.0,w-a99c3d,2026-09-04T13:48:12.339365+00:00
+Rated 6,White,Stockfish,Void,Unterminated,,46,54.1,3.4,0.5,1.2,88.9,w-a99c3d,2026-09-04T12:46:12.193108+00:00
+Rated 5,Black,Tempo,Loss,Checkmate,,25,43.1,3.7,0.5,1.7,89.4,w-1af86c,2026-09-04T11:44:29.779973+00:00
+Rated 4,White,Random Mover,Win,Checkmate,,39,75.9,3.9,0.4,1.9,63.6,w-2b4afc,2026-09-04T10:44:01.515688+00:00
+Rated 3,Black,Minimax Two,Loss,Checkmate,,39,68.2,3.8,0.4,1.7,71.3,w-d5eece,2026-09-04T09:36:52.927104+00:00
+Rated 2,Black,Clanfinn,Loss,Checkmate,,21,42.8,3.9,0.6,2.0,87.7,w-bf0e55,2026-09-04T08:32:00.042661+00:00
+Rated 1,White,Elbow Grease,Loss,Checkmate,,19,42.9,4.0,0.5,2.3,86.6,w-909ade,2026-09-04T07:14:14.879415+00:00
