@@ -25,12 +25,15 @@ TT_MAX_ENTRIES = 2_000_000
 # iteration's work, while guessing high wastes time that is never recovered.
 ITERATION_COST_FACTOR = 3.0
 
-# Never touch the last few seconds, then spend a fixed fraction of what is
-# left. With a 0.5s increment the clock follows r' = 0.9r + 1.0, which settles
-# at 10s remaining -- a higher floor than the previous reserve-less remaining/12
-# (6s), while giving noticeably more time per move whenever the clock is healthy.
+# Hold back a reserve, then spend a fixed fraction of what is left. The reserve
+# is capped at a quarter of the clock so that a short clock is not swallowed
+# whole: a flat 5s reserve drove the budget to its 0.01s floor below 5s left,
+# which made the engine move instantly exactly when it was already in trouble.
+# With a 0.5s increment the clock settles near 10s when healthy and near 6.7s
+# on the scaled branch, so it cannot run itself out of time either way.
 TIME_DIVISOR = 10.0
 TIME_RESERVE = 5.0
+TIME_RESERVE_FRACTION = 0.25
 
 NULL_MIN_PHASE = 4
 DELTA_MARGIN = 200
@@ -918,7 +921,8 @@ def get_move(fen: str, time_left_ms: int) -> str:
 
     try:
         remaining_s = time_left_ms / 1000.0
-        budget = max(0.01, (remaining_s - TIME_RESERVE) / TIME_DIVISOR)
+        reserve = min(TIME_RESERVE, remaining_s * TIME_RESERVE_FRACTION)
+        budget = max(0.01, (remaining_s - reserve) / TIME_DIVISOR)
         start = time.perf_counter()
         clock = Clock(budget)
         chosen = fallback
