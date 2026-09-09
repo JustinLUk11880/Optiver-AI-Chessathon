@@ -802,12 +802,21 @@ def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Mov
 
 
 def get_move(fen: str, time_left_ms: int) -> str:
-    board = chess.Board(fen)
-    HISTORY.add(chess.polyglot.zobrist_hash(board))
-    KILLERS.clear()
-    for square_pair in HISTORY_SCORE:
-        HISTORY_SCORE[square_pair] >>= 1
-    fallback = next(iter(board.legal_moves)).uci()
+    """Never raises: a crash forfeits the game, so every path returns a string."""
+    try:
+        board = chess.Board(fen)
+        fallback = ""
+        for legal in board.legal_moves:
+            fallback = legal.uci()
+            break
+        if not fallback:
+            return "0000"
+        HISTORY.add(chess.polyglot.zobrist_hash(board))
+        KILLERS.clear()
+        for square_pair in HISTORY_SCORE:
+            HISTORY_SCORE[square_pair] >>= 1
+    except Exception:
+        return "0000"
 
     try:
         remaining_s = time_left_ms / 1000.0
