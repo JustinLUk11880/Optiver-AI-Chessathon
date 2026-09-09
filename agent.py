@@ -260,6 +260,9 @@ ADJACENT_FILES = [
     for i in range(8)
 ]
 
+PAWN_CACHE_MAX = 100_000
+PAWN_CACHE: dict[tuple[int, int], tuple[int, int]] = {}
+
 TT: dict[int, tuple[int, int, int, chess.Move | None]] = {}
 KILLERS: dict[int, list[chess.Move]] = {}
 HISTORY_SCORE: dict[tuple[int, int], int] = {}
@@ -365,6 +368,50 @@ def move_delta(board: chess.Board, move: chess.Move) -> tuple[int, int, int]:
 
     return d_mg, d_eg, d_phase
 
+def pawn_terms(white_pawns: int, black_pawns: int) -> tuple[int, int]:
+    """(mg, eg) for the terms that depend on pawn placement alone.
+
+    Passed, doubled and isolated pawns are a pure function of the two pawn
+    bitboards, so they can be cached across the whole game. Pawn structure
+    survives most piece moves, so the table hits on the large majority of
+    leaves, and this was the bulk of what evaluate_incr recomputed each time.
+    """
+    key = (white_pawns, black_pawns)
+    cached = PAWN_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    mg = 0
+    eg = 0
+
+    for square in chess.scan_forward(white_pawns):
+        if not (PASSED_TABLE[64 + square] & black_pawns):
+            rank = chess.square_rank(square)
+            mg += PASSED_BONUS_MG[rank]
+            eg += PASSED_BONUS_EG[rank]
+
+    for square in chess.scan_forward(black_pawns):
+        if not (PASSED_TABLE[square] & white_pawns):
+            rank = 7 - chess.square_rank(square)
+            mg -= PASSED_BONUS_MG[rank]
+            eg -= PASSED_BONUS_EG[rank]
+
+    for own_pawns, sign in ((white_pawns, 1), (black_pawns, -1)):
+        for file_index in range(8):
+            file_bb = chess.BB_FILES[file_index]
+            count = bin(file_bb & own_pawns).count("1")
+            if count > 1:
+                mg += sign * DOUBLED_PAWN_MG * (count - 1)
+                eg += sign * DOUBLED_PAWN_EG * (count - 1)
+            if count and not (ADJACENT_FILES[file_index] & own_pawns):
+                mg += sign * ISOLATED_PAWN_MG * count
+                eg += sign * ISOLATED_PAWN_EG * count
+
+    if len(PAWN_CACHE) < PAWN_CACHE_MAX:
+        PAWN_CACHE[key] = (mg, eg)
+    return mg, eg
+
+
 def evaluate(board: chess.Board) -> int:
     white_bb = board.occupied_co[chess.WHITE]
     pawns_bb = board.pawns
@@ -387,19 +434,7 @@ def evaluate(board: chess.Board) -> int:
             eg -= EG_TABLE[offset]
         phase += PHASE_WEIGHT[piece_type]
 
-        if piece_type == chess.PAWN:
-            if colour:
-                if not (PASSED_TABLE[64 + square] & black_pawns):
-                    rank = chess.square_rank(square)
-                    mg += PASSED_BONUS_MG[rank]
-                    eg += PASSED_BONUS_EG[rank]
-            else:
-                if not (PASSED_TABLE[square] & white_pawns):
-                    rank = 7 - chess.square_rank(square)
-                    mg -= PASSED_BONUS_MG[rank]
-                    eg -= PASSED_BONUS_EG[rank]
-
-        elif piece_type == chess.ROOK:
+        if piece_type == chess.ROOK:
             file_bb = chess.BB_FILES[chess.square_file(square)]
             own_pawns = white_pawns if colour else black_pawns
             if not (file_bb & own_pawns):
@@ -419,16 +454,6 @@ def evaluate(board: chess.Board) -> int:
             mg += sign * BISHOP_PAIR_MG
             eg += sign * BISHOP_PAIR_EG
 
-        for file_index in range(8):
-            file_bb = chess.BB_FILES[file_index]
-            count = bin(file_bb & own_pawns).count("1")
-            if count > 1:
-                mg += sign * DOUBLED_PAWN_MG * (count - 1)
-                eg += sign * DOUBLED_PAWN_EG * (count - 1)
-            if count and not (ADJACENT_FILES[file_index] & own_pawns):
-                mg += sign * ISOLATED_PAWN_MG * count
-                eg += sign * ISOLATED_PAWN_EG * count
-
         king = board.king(colour)
         if king is not None:
             rank = chess.square_rank(king)
@@ -439,6 +464,10 @@ def evaluate(board: chess.Board) -> int:
                     if not (chess.BB_FILES[f] & own_pawns):
                         missing += 1
                 mg -= sign * KING_SHIELD_PENALTY * missing
+
+    pawn_mg, pawn_eg = pawn_terms(white_pawns, black_pawns)
+    mg += pawn_mg
+    eg += pawn_eg
 
     phase = min(phase, TOTAL_PHASE)
     score = (mg * phase + eg * (TOTAL_PHASE - phase)) // TOTAL_PHASE
@@ -464,18 +493,6 @@ def evaluate_incr(board: chess.Board, mg: int, eg: int, phase: int) -> int:
     white_pawns = pawns_bb & white_bb
     black_pawns = pawns_bb & ~white_bb & board.occupied
 
-    for square in chess.scan_forward(white_pawns):
-        if not (PASSED_TABLE[64 + square] & black_pawns):
-            rank = chess.square_rank(square)
-            mg += PASSED_BONUS_MG[rank]
-            eg += PASSED_BONUS_EG[rank]
-
-    for square in chess.scan_forward(black_pawns):
-        if not (PASSED_TABLE[square] & white_pawns):
-            rank = 7 - chess.square_rank(square)
-            mg -= PASSED_BONUS_MG[rank]
-            eg -= PASSED_BONUS_EG[rank]
-
     for square in chess.scan_forward(board.rooks & board.occupied):
         colour = bool(white_bb & chess.BB_SQUARES[square])
         file_bb = chess.BB_FILES[chess.square_file(square)]
@@ -497,16 +514,6 @@ def evaluate_incr(board: chess.Board, mg: int, eg: int, phase: int) -> int:
             mg += sign * BISHOP_PAIR_MG
             eg += sign * BISHOP_PAIR_EG
 
-        for file_index in range(8):
-            file_bb = chess.BB_FILES[file_index]
-            count = bin(file_bb & own_pawns).count("1")
-            if count > 1:
-                mg += sign * DOUBLED_PAWN_MG * (count - 1)
-                eg += sign * DOUBLED_PAWN_EG * (count - 1)
-            if count and not (ADJACENT_FILES[file_index] & own_pawns):
-                mg += sign * ISOLATED_PAWN_MG * count
-                eg += sign * ISOLATED_PAWN_EG * count
-
         king = board.king(colour)
         if king is not None:
             rank = chess.square_rank(king)
@@ -517,6 +524,10 @@ def evaluate_incr(board: chess.Board, mg: int, eg: int, phase: int) -> int:
                     if not (chess.BB_FILES[f] & own_pawns):
                         missing += 1
                 mg -= sign * KING_SHIELD_PENALTY * missing
+
+    pawn_mg, pawn_eg = pawn_terms(white_pawns, black_pawns)
+    mg += pawn_mg
+    eg += pawn_eg
 
     phase = min(phase, TOTAL_PHASE)
     score = (mg * phase + eg * (TOTAL_PHASE - phase)) // TOTAL_PHASE
