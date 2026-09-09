@@ -716,7 +716,17 @@ def search(
     best_move: chess.Move | None = None
 
     for index, move in enumerate(order_moves(board, moves, ply, tt_move)):
-        quiet = board.piece_type_at(move.to_square) is None
+        # A promotion or an en-passant capture leaves to_square empty beforehand,
+        # so "nothing stands on to_square" is not the same thing as quiet. Both are
+        # tactical: reducing them or storing them as killers loses material.
+        quiet = (
+            move.promotion is None
+            and not (board.occupied & chess.BB_SQUARES[move.to_square])
+            and not (
+                move.to_square == board.ep_square
+                and board.pawns & chess.BB_SQUARES[move.from_square]
+            )
+        )
         d_mg, d_eg, d_phase = move_delta(board, move)
         nmg, neg, nphase = mg + d_mg, eg + d_eg, phase + d_phase
         board.push(move)
