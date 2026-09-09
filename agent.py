@@ -299,6 +299,11 @@ TT: dict[int, tuple[int, int, int, chess.Move | None]] = {}
 KILLERS: dict[int, list[chess.Move]] = {}
 HISTORY_SCORE: dict[tuple[int, int], int] = {}
 HISTORY: set[int] = set()
+# Keys along the line currently being searched, so a line that walks back into
+# a position it already visited is scored as a draw. HISTORY only ever holds
+# positions where it was our turn at the root of a real move, so without this
+# a repetition invented inside the search was invisible.
+PATH: list[int] = []
 
 STABILITY_CUTOFF = 3
 
@@ -773,7 +778,7 @@ def search(
     clock.check()
 
     key = pkey ^ state_key(board)
-    if ply > 0 and key in HISTORY:
+    if ply > 0 and (key in HISTORY or key in PATH):
         return 0
     tt_move: chess.Move | None = None
     entry = TT.get(key)
@@ -814,6 +819,7 @@ def search(
     best = -MATE
     best_move: chess.Move | None = None
 
+    PATH.append(key)
     for index, move in enumerate(order_moves(board, moves, ply, tt_move)):
         # A promotion or an en-passant capture leaves to_square empty beforehand,
         # so "nothing stands on to_square" is not the same thing as quiet. Both are
@@ -866,6 +872,8 @@ def search(
                 HISTORY_SCORE[square_pair] = HISTORY_SCORE.get(square_pair, 0) + depth * depth
             break
 
+    PATH.pop()
+
     if best <= original_alpha:
         flag = TT_UPPER
     elif best >= beta:
@@ -893,6 +901,7 @@ def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Mov
 
     alpha = -MATE - 1
     best_move: chess.Move | None = None
+    PATH.clear()
     pkey = placement_key(board)
     entry = TT.get(pkey ^ state_key(board))
     tt_move = entry[3] if entry is not None else None
