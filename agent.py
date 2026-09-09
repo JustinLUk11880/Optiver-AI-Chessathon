@@ -18,6 +18,13 @@ TT_LOWER = 1
 TT_UPPER = 2
 TT_MAX_ENTRIES = 2_000_000
 
+# A new iteration costs roughly this multiple of the previous one. Measured
+# across test positions at depth >= 5: median 2.5, p90 4.8. The old value of 8
+# stopped iterative deepening early and left about half the clock unspent every
+# move. Clock is the hard stop, so guessing low only risks discarding one
+# iteration's work, while guessing high wastes time that is never recovered.
+ITERATION_COST_FACTOR = 3.0
+
 NULL_MIN_PHASE = 4
 DELTA_MARGIN = 200
 SHUFFLE_PENALTY = 3
@@ -912,7 +919,7 @@ def get_move(fen: str, time_left_ms: int) -> str:
         for depth in range(1, MAX_DEPTH):
             elapsed = time.perf_counter() - start
             limit = budget * (0.5 if stable >= STABILITY_CUTOFF else 1.0)
-            if depth > 2 and elapsed + last_depth_s * 8 > limit:
+            if depth > 2 and elapsed + last_depth_s * ITERATION_COST_FACTOR > limit:
                 break
             depth_start = time.perf_counter()
             move, complete = search_root(board, depth, clock)
