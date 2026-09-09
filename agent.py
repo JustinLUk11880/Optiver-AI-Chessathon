@@ -536,17 +536,44 @@ def evaluate_incr(board: chess.Board, mg: int, eg: int, phase: int) -> int:
     return score if board.turn == chess.WHITE else -score
 
 def see_gain(board: chess.Board, move: chess.Move) -> int:
-    """Net material from a capture, assuming a single recapture."""
-    victim = board.piece_type_at(move.to_square)
+    """Net material from the full exchange sequence on the target square."""
+    target = move.to_square
+    victim = board.piece_type_at(target)
     if victim is None:
         return 0
-    gain = MVV_LVA_VALUE[victim]
+
     attacker = board.piece_type_at(move.from_square)
     if attacker is None:
-        return gain
-    if board.attackers(not board.turn, move.to_square):
-        gain -= MVV_LVA_VALUE[attacker]
-    return gain
+        return MVV_LVA_VALUE[victim]
+
+    occupied = board.occupied & ~chess.BB_SQUARES[move.from_square]
+    side = not board.turn
+    gains = [MVV_LVA_VALUE[victim]]
+    on_square = attacker
+
+    while True:
+        attackers = board.attackers_mask(side, target) & occupied
+        if not attackers:
+            break
+        best_square = -1
+        best_value = 10_000
+        for square in chess.scan_forward(attackers):
+            value = MVV_LVA_VALUE[board.piece_type_at(square)]
+            if value < best_value:
+                best_value = value
+                best_square = square
+        if best_square < 0:
+            break
+        gains.append(MVV_LVA_VALUE[on_square] - gains[-1])
+        on_square = board.piece_type_at(best_square)
+        occupied &= ~chess.BB_SQUARES[best_square]
+        side = not side
+        if len(gains) > 32:
+            break
+
+    for i in range(len(gains) - 2, -1, -1):
+        gains[i] = -max(-gains[i], gains[i + 1])
+    return gains[0]
 
 def move_score(board: chess.Board, move: chess.Move, ply: int, tt_move: chess.Move | None) -> int:
     if tt_move is not None and move == tt_move:
@@ -777,7 +804,7 @@ def get_move(fen: str, time_left_ms: int) -> str:
 
     try:
         remaining_s = time_left_ms / 1000.0
-        budget = max(0.01, min(remaining_s / 15.0, remaining_s * 0.25))
+        budget = max(0.01, min(remaining_s / 12.0, remaining_s * 0.25))
         start = time.perf_counter()
         clock = Clock(budget)
         chosen = fallback
