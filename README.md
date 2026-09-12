@@ -1,81 +1,180 @@
-# AI Chessathon starter
+# Optiver AI Chessathon — chess engine
 
-Fork this to build an agent for [AI Chessathon](https://aichessathon.com). It gives you a working
-submission, baselines to beat, and a local harness that speaks the same protocol and enforces the
-same clock as the platform, so you can see whether a change actually helped before you upload it.
+A classical alpha-beta chess engine written in Python for the [AI Chessathon](https://aichessathon.com),
+sponsored by Optiver. Built solo over nine days with no prior game-engine experience.
 
-```
-git clone https://github.com/advitrocks9/aichessathon-starter
-cd aichessathon-starter
-make setup
-make play
-```
+**Result:** 215th of 334 in the 13-round qualification Swiss (6.0/13, Buchholz 76.5).
+Peak ladder rating 1645, final 1556, across 115 rated games.
 
-That plays your agent against a baseline over a full 120 s + 0.5 s game and prints the result.
-When you like it, `make zip` and drop `submission.zip` on your dashboard.
+**Reliability:** zero timeouts, zero crashes, and zero illegal moves across every rated
+game played. This was the first design priority and it held.
 
-## Writing an agent
+---
 
-`agent.py` is the whole submission. One function:
+## The contract
+
+The platform imports a single file and calls one function:
 
 ```python
 def get_move(fen: str, time_left_ms: int) -> str:
-    return "e2e4"
+    ...  # returns a move in UCI notation, e.g. "e2e4"
 ```
 
-The fork ships a legal random-mover, so the loop works before you write anything. Replace the body.
+One core, 2 GB, 120s + 0.5s increment, no network. Only `python-chess` and four other
+libraries are available. Games start from curated near-level opening positions, and
+illegal moves, crashes and timeouts are all scored as losses.
 
+---
+
+## Architecture
+
+### Search
+
+| Technique | What it does |
+|---|---|
+| Alpha-beta negamax | Prunes branches that provably can't change the result |
+| Iterative deepening | Searches depth 1, 2, 3... and keeps the deepest completed answer |
+| Adaptive time budget | Spends more when the root move is unstable, banks clock when it isn't |
+| Quiescence search | Keeps searching captures past the depth limit until the position is quiet |
+| Delta pruning | Skips captures that can't reach alpha even if they win the piece for free |
+| SEE | Full recursive static exchange evaluation — simulates the whole capture sequence |
+| Transposition table | Caches results with exact/lower/upper bound flags and ply-normalised mate scores |
+| Move ordering | TT move → SEE-scored captures → killer moves → aged history heuristic |
+| Null-move pruning | If you're still winning after giving the opponent a free move, skim the branch |
+| PVS | Full window on the first move, null window on the rest |
+| Late move reductions | Reduces late quiet moves, re-searches when one surprises |
+| Incremental evaluation | Carries running material/phase totals through push and pop |
+| Repetition detection | Scores a return to a previously-seen position as a draw |
+
+### Evaluation
+
+Material and tapered PeSTO piece-square tables, blended between midgame and endgame
+values by remaining non-pawn material. On top of that: passed pawns, king pawn shield,
+bishop pair, rooks on open and half-open files, doubled and isolated pawns, a mop-up
+term that drives a bare enemy king to the edge, and a penalty that decays the advantage
+as the fifty-move counter climbs.
+
+All terms are computed in a single pass over flat arrays, with pawn-structure terms
+cached on the pawn bitboards.
+
+---
+
+## Performance
+
+Node cost for a fixed-depth search from a standard middlegame position, measured across
+the build:
+
+| Milestone | Depth 4 |
+|---|---|
+| Alpha-beta, material eval only | 2.662s |
+| + MVV-LVA move ordering | 0.437s |
+| + transposition table | 1.587s (evaluation got heavier) |
+| + PVS | 0.540s |
+| + late move reductions | 0.240s |
+| + SEE pruning in quiescence | 0.160s |
+| + incremental evaluation | **0.136s** |
+
+Roughly 20× over the week. Depth 8 completes where depth 5 was a stretch at the start.
+
+Against the bundled baselines: 100% against `random`, `greedy`, `minimax` and `numba`.
+
+---
+
+## Running it
+
+The project uses [uv](https://docs.astral.sh/uv/).
+
+```bash
+uv sync
+uv run python -m harness.play --white . --black baselines/minimax
+uv run python -m harness.arena --opponent baselines/minimax --games 20
+uv run python -m harness.package        # builds submission.zip
 ```
-make play                                          # one game, real time control
-make arena                                         # 20 fast games, prints a score
-make play FEN="<fen>"                              # start from a given position
-uv run python -m harness.play --black baselines/minimax --pgn game.pgn
-uv run python -m harness.arena --opponent ../my-old-version --games 200
-```
 
-Anything your agent writes to stdout or stderr shows up under the result, so `print` debugging
-works. The platform discards it during rated games and shows it in your validation log.
+### Test tools
 
-## The ladder
+The local arena turned out to be unable to resolve changes smaller than about 50 Elo —
+too few games, too many draws, and a large first-move advantage. The tools that actually
+worked are targeted and fast:
 
-Measured with `harness/arena.py`. Beating greedy is a search. Beating minimax is a search plus an
-evaluation worth searching with.
+| Tool | Answers |
+|---|---|
+| `tools/depths.py` | What does each extra ply cost? |
+| `tools/matedepth.py` | Are mate scores ordered by distance? |
+| `tools/repcheck.py` | Does it convert a won position instead of shuffling? |
+| `tools/mate.py` | Can it mate with king and rook against a bare king? |
+| `tools/seecheck.py` | Does SEE get constructed exchanges right? |
+| `tools/deltacheck.py` | Does the incremental eval match a full recomputation? |
 
-| Matchup | Games | Time control | Score |
-|---|---|---|---|
-| random vs greedy | 20 | 10 s + 0.1 s | 10.0% (+1 =2 -17) |
-| greedy vs minimax | 6 | 120 s + 0.5 s | 0.0% (+0 =0 -6) |
-| numba vs minimax | 6 | 10 s + 0.5 s | 66.7% (+2 =4 -0) |
+Every change was verified against these before shipping. Refactors were verified by
+equality — run both versions over hundreds of random positions and require zero
+mismatches.
 
-- `baselines/random` plays a uniformly random legal move. It is what `agent.py` starts as.
-- `baselines/greedy` searches one ply on material.
-- `baselines/minimax` searches two plies on material and mobility, with no time management.
-- `baselines/numba` is `minimax` with the evaluation jitted. It is barely stronger, which is
-  the point: jitting a shallow search buys headroom, not depth. Read it for the warm-up call
-  at the bottom, which is how you keep compilation off your clock.
+---
 
-## What's here
+## Bugs worth documenting
 
-```
-agent.py             your submission
-baselines/           random, greedy, minimax, numba; each is a directory with an agent.py
-harness/runner.py    the process the platform runs your agent in
-harness/referee.py   the clock, legality, draw and adjudication rules
-harness/rules.py     the event constants the harness enforces
-harness/sandbox.py   the one process, spoken to as the platform speaks to a container
-harness/play.py      one game between two agent directories
-harness/arena.py     many games, with a score
-harness/package.py   builds submission.zip with agent.py at the root
-docs/IDEAS.md        where the strength actually comes from
-```
+**Quiescence returned an unadjusted mate score.** `quiesce` returned `-MATE` where the
+rest of the search used `-MATE + ply`. Every mating line therefore scored exactly
+1,000,000, so mate-in-1 and mate-in-20 were indistinguishable and the engine picked
+arbitrarily among dozens of tied moves. This presented as the engine repeating moves in
+overwhelmingly won positions — which led to four separate attempts to fix "the repetition
+problem", all of which failed because they targeted the symptom. It was found by printing
+raw root scores instead of theorising, and fixed by adding two characters.
 
-Local games start from the normal position unless you pass `--fen`. Rated games start from
-curated neutral positions.
+**Fail-hard and fail-soft mixed between functions.** `quiesce` returned the window bound
+on a cutoff while `search` returned a true score. `search` then treated a bound as an
+exact value and propagated it, corrupting everything above it in the tree. Quiescence
+looked broken twice before the convention mismatch was identified.
 
-The harness is here so your games are honest, not so you can pre-validate an upload. Acceptance
-happens on the platform, and the validation log on your dashboard is the authority on it.
+**The root tie-break admitted rejected moves.** Fail-soft scores can land exactly on
+alpha when a move fails low, and those were being appended to the list of "tied best
+moves" and selected at random. Better move ordering made it worse, because good ordering
+raises alpha faster and more moves land on that bound.
 
-## The rules
+**Mate scores were stored in the transposition table without ply normalisation**, so a
+mate found at one depth meant something different when reused at another.
 
-[aichessathon.com/docs](https://aichessathon.com/docs) is canonical and changes. Read it before
-you upload.
+---
+
+## Things that were tried and rejected
+
+Recorded because a negative result measured is worth more than a feature shipped on faith.
+
+- **Repetition penalties in the search** — four variants, measured over 60+ games each.
+  None helped; one scored 45% against a random opponent. The underlying cause was the
+  mate-score bug above.
+- **Check extensions** — depth 5 went from 7.0s to 10.4s with no improvement in move
+  quality.
+- **Aspiration windows** — no measurable effect once PVS and LMR were doing the pruning.
+- **Numba on the evaluation** — measured roughly break-even. The Python↔numba boundary
+  crossing costs about as much as the compiled code saves at this granularity.
+- **Incremental Zobrist hashing** — 7% of positions mismatched on castling-rights changes
+  and en-passant squares. A wrong hash means a wrong cache hit, which is silent corruption
+  that no available test would catch, so it was dropped rather than half-fixed.
+
+---
+
+## Limitations
+
+The ceiling here is the substrate. `python-chess` generates moves at roughly 250k per
+second; a bitboard move generator compiled with numba does 5–20 million. That gap is
+three to four plies, which is most of the distance to the top of the ladder. Every
+technique in this engine squeezes more depth out of the same node budget — the remaining
+gain is in nodes per second, and that means writing a move generator from scratch.
+
+That was ruled out on day one as a 60-hour project against a nine-day budget, and the
+decision still looks right: the alternative was shipping nothing.
+
+Also missing: no mobility term, no king-attack evaluation beyond a three-file pawn
+shield, and evaluation weights are published values rather than tuned on this engine's
+own search.
+
+---
+
+## Licence
+
+The harness and baselines come from the
+[official starter repository](https://github.com/advitrocks9/aichessathon-starter).
+Piece-square table values are PeSTO's, fitted by Ronald Friederich. Everything in
+`agent.py` was written for this competition.
