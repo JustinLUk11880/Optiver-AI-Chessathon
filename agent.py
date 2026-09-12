@@ -1,9 +1,9 @@
 ﻿"""The submission entrypoint. The platform imports this file and calls get_move."""
 
+import random
 import time
 
 import chess
-import chess.polyglot
 
 MATE = 1_000_000
 MATE_BOUND = MATE - 1000
@@ -18,9 +18,33 @@ TT_LOWER = 1
 TT_UPPER = 2
 TT_MAX_ENTRIES = 2_000_000
 
+# A new iteration costs roughly this multiple of the previous one. Measured
+# across test positions at depth >= 5: median 2.5, p90 4.8. The old value of 8
+# stopped iterative deepening early and left about half the clock unspent every
+# move. Clock is the hard stop, so guessing low only risks discarding one
+# iteration's work, while guessing high wastes time that is never recovered.
+ITERATION_COST_FACTOR = 3.0
+
+# Hold back a reserve, then spend a fixed fraction of what is left. The reserve
+# is capped at a quarter of the clock so that a short clock is not swallowed
+# whole: a flat 5s reserve drove the budget to its 0.01s floor below 5s left,
+# which made the engine move instantly exactly when it was already in trouble.
+# With a 0.5s increment the clock settles near 10s when healthy and near 6.7s
+# on the scaled branch, so it cannot run itself out of time either way.
+TIME_DIVISOR = 10.0
+TIME_RESERVE = 5.0
+TIME_RESERVE_FRACTION = 0.25
+
 NULL_MIN_PHASE = 4
+# Reverse futility: how far above beta the static score has to sit, per ply, to
+# assume no quiet move can drag it back under.
+REVERSE_FUTILITY_DEPTH = 3
+REVERSE_FUTILITY_MARGIN = 120
 DELTA_MARGIN = 200
 SHUFFLE_PENALTY = 3
+# The drift below only bites past this many halfmoves, so only past this point
+# does the halfmove clock become part of a position's identity.
+SHUFFLE_START = 20
 KING_SHIELD_PENALTY = 18
 
 PIECE_VALUE_MG = {
@@ -260,10 +284,30 @@ ADJACENT_FILES = [
     for i in range(8)
 ]
 
+_ZOB = random.Random(0x5EED_1234)
+# Same indexing as MG_TABLE: (384 if white else 0) + piece_type * 64 + square.
+ZOBRIST_PIECE = [_ZOB.getrandbits(64) for _ in range(832)]
+ZOBRIST_CASTLE_SQ = [_ZOB.getrandbits(64) for _ in range(64)]
+ZOBRIST_EP_FILE = [_ZOB.getrandbits(64) for _ in range(8)]
+ZOBRIST_TURN = _ZOB.getrandbits(64)
+ZOBRIST_HALFMOVE = [_ZOB.getrandbits(64) for _ in range(128)]
+CASTLE_CACHE: dict[int, int] = {}
+
+# ~200 bytes an entry. A long game reaches roughly 120k distinct pawn
+# structures, so 100k bound mid-game and cost hit rate; 400k is ~80MB
+# against a 2GB limit the transposition table barely dents.
+PAWN_CACHE_MAX = 400_000
+PAWN_CACHE: dict[tuple[int, int], tuple[int, int]] = {}
+
 TT: dict[int, tuple[int, int, int, chess.Move | None]] = {}
 KILLERS: dict[int, list[chess.Move]] = {}
 HISTORY_SCORE: dict[tuple[int, int], int] = {}
 HISTORY: set[int] = set()
+# Keys along the line currently being searched, so a line that walks back into
+# a position it already visited is scored as a draw. HISTORY only ever holds
+# positions where it was our turn at the root of a real move, so without this
+# a repetition invented inside the search was invisible.
+PATH: list[int] = []
 
 STABILITY_CUTOFF = 3
 
@@ -310,11 +354,59 @@ def mopup(board: chess.Board, winner: chess.Color) -> int:
     )
     return 5 * edge + 2 * (14 - gap)
 
-def move_delta(board: chess.Board, move: chess.Move) -> tuple[int, int, int]:
-    """Change in (mg, eg, phase) from playing move. Call BEFORE push."""
+def state_key(board: chess.Board) -> int:
+    """Zobrist contribution of side to move, castling rights and en-passant file.
+
+    Read from the board rather than updated incrementally. These are the parts
+    that a move changes in awkward ways -- rights lost when a rook is captured,
+    the en-passant square appearing and expiring, a null move clearing it -- so
+    deriving them fresh each node removes that whole class of drift. Only piece
+    placement is threaded through move_delta.
+    """
+    key = ZOBRIST_TURN if board.turn else 0
+
+    rights = board.castling_rights
+    if rights:
+        cached = CASTLE_CACHE.get(rights)
+        if cached is None:
+            cached = 0
+            for square in chess.scan_forward(rights):
+                cached ^= ZOBRIST_CASTLE_SQ[square]
+            CASTLE_CACHE[rights] = cached
+        key ^= cached
+
+    ep = board.ep_square
+    if ep is not None:
+        key ^= ZOBRIST_EP_FILE[chess.square_file(ep)]
+
+    # evaluate() fades a score toward a draw as the halfmove clock climbs, so
+    # past SHUFFLE_START two positions that differ only in that clock genuinely
+    # evaluate differently and must not share a transposition table entry. Below
+    # it the drift is zero, so the key is left alone and the hit rate is intact.
+    halfmove = board.halfmove_clock
+    if halfmove > SHUFFLE_START:
+        key ^= ZOBRIST_HALFMOVE[halfmove if halfmove < 128 else 127]
+
+    return key
+
+
+def placement_key(board: chess.Board) -> int:
+    """Zobrist of piece placement alone, computed from scratch."""
+    key = 0
+    for square, piece in board.piece_map().items():
+        key ^= ZOBRIST_PIECE[(384 if piece.color else 0) + piece.piece_type * 64 + square]
+    return key
+
+
+def full_key(board: chess.Board) -> int:
+    return placement_key(board) ^ state_key(board)
+
+
+def move_delta(board: chess.Board, move: chess.Move) -> tuple[int, int, int, int]:
+    """Change in (mg, eg, phase, placement key) from playing move. Call BEFORE push."""
     mover = board.piece_at(move.from_square)
     if mover is None:
-        return 0, 0, 0
+        return 0, 0, 0, 0
     colour = mover.color
     piece_type = mover.piece_type
     sign = 1 if colour else -1
@@ -323,15 +415,18 @@ def move_delta(board: chess.Board, move: chess.Move) -> tuple[int, int, int]:
     d_mg = 0
     d_eg = 0
     d_phase = 0
+    d_key = 0
 
     from_off = base + piece_type * 64 + move.from_square
     d_mg -= sign * MG_TABLE[from_off]
     d_eg -= sign * EG_TABLE[from_off]
+    d_key ^= ZOBRIST_PIECE[from_off]
 
     landed = move.promotion if move.promotion else piece_type
     to_off = base + landed * 64 + move.to_square
     d_mg += sign * MG_TABLE[to_off]
     d_eg += sign * EG_TABLE[to_off]
+    d_key ^= ZOBRIST_PIECE[to_off]
 
     if move.promotion:
         d_phase += PHASE_WEIGHT[move.promotion] - PHASE_WEIGHT[chess.PAWN]
@@ -341,6 +436,7 @@ def move_delta(board: chess.Board, move: chess.Move) -> tuple[int, int, int]:
         cap_off = (0 if colour else 384) + chess.PAWN * 64 + captured_square
         d_mg -= -sign * MG_TABLE[cap_off]
         d_eg -= -sign * EG_TABLE[cap_off]
+        d_key ^= ZOBRIST_PIECE[cap_off]
     else:
         captured = board.piece_at(move.to_square)
         if captured is not None:
@@ -350,6 +446,7 @@ def move_delta(board: chess.Board, move: chess.Move) -> tuple[int, int, int]:
             d_mg -= cap_sign * MG_TABLE[cap_off]
             d_eg -= cap_sign * EG_TABLE[cap_off]
             d_phase -= PHASE_WEIGHT[captured.piece_type]
+            d_key ^= ZOBRIST_PIECE[cap_off]
 
     if board.is_castling(move):
         if move.to_square > move.from_square:
@@ -362,8 +459,53 @@ def move_delta(board: chess.Board, move: chess.Move) -> tuple[int, int, int]:
         rt = base + chess.ROOK * 64 + rook_to
         d_mg += sign * (MG_TABLE[rt] - MG_TABLE[rf])
         d_eg += sign * (EG_TABLE[rt] - EG_TABLE[rf])
+        d_key ^= ZOBRIST_PIECE[rf] ^ ZOBRIST_PIECE[rt]
 
-    return d_mg, d_eg, d_phase
+    return d_mg, d_eg, d_phase, d_key
+
+def pawn_terms(white_pawns: int, black_pawns: int) -> tuple[int, int]:
+    """(mg, eg) for the terms that depend on pawn placement alone.
+
+    Passed, doubled and isolated pawns are a pure function of the two pawn
+    bitboards, so they can be cached across the whole game. Pawn structure
+    survives most piece moves, so the table hits on the large majority of
+    leaves, and this was the bulk of what evaluate_incr recomputed each time.
+    """
+    key = (white_pawns, black_pawns)
+    cached = PAWN_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    mg = 0
+    eg = 0
+
+    for square in chess.scan_forward(white_pawns):
+        if not (PASSED_TABLE[64 + square] & black_pawns):
+            rank = chess.square_rank(square)
+            mg += PASSED_BONUS_MG[rank]
+            eg += PASSED_BONUS_EG[rank]
+
+    for square in chess.scan_forward(black_pawns):
+        if not (PASSED_TABLE[square] & white_pawns):
+            rank = 7 - chess.square_rank(square)
+            mg -= PASSED_BONUS_MG[rank]
+            eg -= PASSED_BONUS_EG[rank]
+
+    for own_pawns, sign in ((white_pawns, 1), (black_pawns, -1)):
+        for file_index in range(8):
+            file_bb = chess.BB_FILES[file_index]
+            count = bin(file_bb & own_pawns).count("1")
+            if count > 1:
+                mg += sign * DOUBLED_PAWN_MG * (count - 1)
+                eg += sign * DOUBLED_PAWN_EG * (count - 1)
+            if count and not (ADJACENT_FILES[file_index] & own_pawns):
+                mg += sign * ISOLATED_PAWN_MG * count
+                eg += sign * ISOLATED_PAWN_EG * count
+
+    if len(PAWN_CACHE) < PAWN_CACHE_MAX:
+        PAWN_CACHE[key] = (mg, eg)
+    return mg, eg
+
 
 def evaluate(board: chess.Board) -> int:
     white_bb = board.occupied_co[chess.WHITE]
@@ -387,19 +529,7 @@ def evaluate(board: chess.Board) -> int:
             eg -= EG_TABLE[offset]
         phase += PHASE_WEIGHT[piece_type]
 
-        if piece_type == chess.PAWN:
-            if colour:
-                if not (PASSED_TABLE[64 + square] & black_pawns):
-                    rank = chess.square_rank(square)
-                    mg += PASSED_BONUS_MG[rank]
-                    eg += PASSED_BONUS_EG[rank]
-            else:
-                if not (PASSED_TABLE[square] & white_pawns):
-                    rank = 7 - chess.square_rank(square)
-                    mg -= PASSED_BONUS_MG[rank]
-                    eg -= PASSED_BONUS_EG[rank]
-
-        elif piece_type == chess.ROOK:
+        if piece_type == chess.ROOK:
             file_bb = chess.BB_FILES[chess.square_file(square)]
             own_pawns = white_pawns if colour else black_pawns
             if not (file_bb & own_pawns):
@@ -419,16 +549,6 @@ def evaluate(board: chess.Board) -> int:
             mg += sign * BISHOP_PAIR_MG
             eg += sign * BISHOP_PAIR_EG
 
-        for file_index in range(8):
-            file_bb = chess.BB_FILES[file_index]
-            count = bin(file_bb & own_pawns).count("1")
-            if count > 1:
-                mg += sign * DOUBLED_PAWN_MG * (count - 1)
-                eg += sign * DOUBLED_PAWN_EG * (count - 1)
-            if count and not (ADJACENT_FILES[file_index] & own_pawns):
-                mg += sign * ISOLATED_PAWN_MG * count
-                eg += sign * ISOLATED_PAWN_EG * count
-
         king = board.king(colour)
         if king is not None:
             rank = chess.square_rank(king)
@@ -440,6 +560,10 @@ def evaluate(board: chess.Board) -> int:
                         missing += 1
                 mg -= sign * KING_SHIELD_PENALTY * missing
 
+    pawn_mg, pawn_eg = pawn_terms(white_pawns, black_pawns)
+    mg += pawn_mg
+    eg += pawn_eg
+
     phase = min(phase, TOTAL_PHASE)
     score = (mg * phase + eg * (TOTAL_PHASE - phase)) // TOTAL_PHASE
 
@@ -449,8 +573,8 @@ def evaluate(board: chess.Board) -> int:
         else:
             score -= mopup(board, chess.BLACK)
 
-    if board.halfmove_clock > 20:
-        drift = (board.halfmove_clock - 20) * SHUFFLE_PENALTY
+    if board.halfmove_clock > SHUFFLE_START:
+        drift = (board.halfmove_clock - SHUFFLE_START) * SHUFFLE_PENALTY
         if score > 0:
             score -= drift
         elif score < 0:
@@ -463,18 +587,6 @@ def evaluate_incr(board: chess.Board, mg: int, eg: int, phase: int) -> int:
     pawns_bb = board.pawns
     white_pawns = pawns_bb & white_bb
     black_pawns = pawns_bb & ~white_bb & board.occupied
-
-    for square in chess.scan_forward(white_pawns):
-        if not (PASSED_TABLE[64 + square] & black_pawns):
-            rank = chess.square_rank(square)
-            mg += PASSED_BONUS_MG[rank]
-            eg += PASSED_BONUS_EG[rank]
-
-    for square in chess.scan_forward(black_pawns):
-        if not (PASSED_TABLE[square] & white_pawns):
-            rank = 7 - chess.square_rank(square)
-            mg -= PASSED_BONUS_MG[rank]
-            eg -= PASSED_BONUS_EG[rank]
 
     for square in chess.scan_forward(board.rooks & board.occupied):
         colour = bool(white_bb & chess.BB_SQUARES[square])
@@ -497,16 +609,6 @@ def evaluate_incr(board: chess.Board, mg: int, eg: int, phase: int) -> int:
             mg += sign * BISHOP_PAIR_MG
             eg += sign * BISHOP_PAIR_EG
 
-        for file_index in range(8):
-            file_bb = chess.BB_FILES[file_index]
-            count = bin(file_bb & own_pawns).count("1")
-            if count > 1:
-                mg += sign * DOUBLED_PAWN_MG * (count - 1)
-                eg += sign * DOUBLED_PAWN_EG * (count - 1)
-            if count and not (ADJACENT_FILES[file_index] & own_pawns):
-                mg += sign * ISOLATED_PAWN_MG * count
-                eg += sign * ISOLATED_PAWN_EG * count
-
         king = board.king(colour)
         if king is not None:
             rank = chess.square_rank(king)
@@ -518,6 +620,10 @@ def evaluate_incr(board: chess.Board, mg: int, eg: int, phase: int) -> int:
                         missing += 1
                 mg -= sign * KING_SHIELD_PENALTY * missing
 
+    pawn_mg, pawn_eg = pawn_terms(white_pawns, black_pawns)
+    mg += pawn_mg
+    eg += pawn_eg
+
     phase = min(phase, TOTAL_PHASE)
     score = (mg * phase + eg * (TOTAL_PHASE - phase)) // TOTAL_PHASE
 
@@ -527,8 +633,8 @@ def evaluate_incr(board: chess.Board, mg: int, eg: int, phase: int) -> int:
         else:
             score -= mopup(board, chess.BLACK)
 
-    if board.halfmove_clock > 20:
-        drift = (board.halfmove_clock - 20) * SHUFFLE_PENALTY
+    if board.halfmove_clock > SHUFFLE_START:
+        drift = (board.halfmove_clock - SHUFFLE_START) * SHUFFLE_PENALTY
         if score > 0:
             score -= drift
         elif score < 0:
@@ -623,7 +729,7 @@ def quiesce(
             return -MATE + ply
         best = -MATE
         for move in order_moves(board, moves, ply):
-            d_mg, d_eg, d_phase = move_delta(board, move)
+            d_mg, d_eg, d_phase, _ = move_delta(board, move)
             board.push(move)
             score = -quiesce(
                 board, -beta, -alpha, ply + 1, clock, mg + d_mg, eg + d_eg, phase + d_phase
@@ -655,7 +761,7 @@ def quiesce(
                 gain += 800
             if best + gain + DELTA_MARGIN < alpha:
                 continue
-        d_mg, d_eg, d_phase = move_delta(board, move)
+        d_mg, d_eg, d_phase, _ = move_delta(board, move)
         board.push(move)
         score = -quiesce(
             board, -beta, -alpha, ply + 1, clock, mg + d_mg, eg + d_eg, phase + d_phase
@@ -671,12 +777,12 @@ def quiesce(
 
 def search(
     board: chess.Board, depth: int, alpha: int, beta: int, ply: int, clock: Clock,
-    mg: int, eg: int, phase: int,
+    mg: int, eg: int, phase: int, pkey: int,
 ) -> int:
     clock.check()
 
-    key = chess.polyglot.zobrist_hash(board)
-    if ply > 0 and key in HISTORY:
+    key = pkey ^ state_key(board)
+    if ply > 0 and (key in HISTORY or key in PATH):
         return 0
     tt_move: chess.Move | None = None
     entry = TT.get(key)
@@ -699,6 +805,16 @@ def search(
         return quiesce(board, alpha, beta, ply, clock, mg, eg, phase)
 
     if (
+        depth <= REVERSE_FUTILITY_DEPTH
+        and ply > 0
+        and not board.is_check()
+        and beta < MATE - 1000
+    ):
+        static = evaluate_incr(board, mg, eg, phase)
+        if static - REVERSE_FUTILITY_MARGIN * depth >= beta:
+            return static
+
+    if (
         depth >= 3
         and ply > 0
         and not board.is_check()
@@ -706,7 +822,9 @@ def search(
         and phase > NULL_MIN_PHASE
     ):
         board.push(chess.Move.null())
-        null_score = -search(board, depth - 3, -beta, -beta + 1, ply + 1, clock, mg, eg, phase)
+        null_score = -search(
+            board, depth - 3, -beta, -beta + 1, ply + 1, clock, mg, eg, phase, pkey
+        )
         board.pop()
         if null_score >= beta:
             return null_score
@@ -715,28 +833,42 @@ def search(
     best = -MATE
     best_move: chess.Move | None = None
 
+    PATH.append(key)
     for index, move in enumerate(order_moves(board, moves, ply, tt_move)):
-        quiet = board.piece_type_at(move.to_square) is None
-        d_mg, d_eg, d_phase = move_delta(board, move)
+        # A promotion or an en-passant capture leaves to_square empty beforehand,
+        # so "nothing stands on to_square" is not the same thing as quiet. Both are
+        # tactical: reducing them or storing them as killers loses material.
+        quiet = (
+            move.promotion is None
+            and not (board.occupied & chess.BB_SQUARES[move.to_square])
+            and not (
+                move.to_square == board.ep_square
+                and board.pawns & chess.BB_SQUARES[move.from_square]
+            )
+        )
+        d_mg, d_eg, d_phase, d_key = move_delta(board, move)
         nmg, neg, nphase = mg + d_mg, eg + d_eg, phase + d_phase
+        nkey = pkey ^ d_key
         board.push(move)
         if index == 0:
-            score = -search(board, depth - 1, -beta, -alpha, ply + 1, clock, nmg, neg, nphase)
+            score = -search(
+                board, depth - 1, -beta, -alpha, ply + 1, clock, nmg, neg, nphase, nkey
+            )
         else:
             reduction = 0
             if depth >= 3 and index >= 4 and quiet and not board.is_check():
                 reduction = 1
             score = -search(
                 board, depth - 1 - reduction, -alpha - 1, -alpha, ply + 1, clock,
-                nmg, neg, nphase,
+                nmg, neg, nphase, nkey,
             )
             if score > alpha and reduction:
                 score = -search(
-                    board, depth - 1, -alpha - 1, -alpha, ply + 1, clock, nmg, neg, nphase
+                    board, depth - 1, -alpha - 1, -alpha, ply + 1, clock, nmg, neg, nphase, nkey
                 )
             if alpha < score < beta:
                 score = -search(
-                    board, depth - 1, -beta, -alpha, ply + 1, clock, nmg, neg, nphase
+                    board, depth - 1, -beta, -alpha, ply + 1, clock, nmg, neg, nphase, nkey
                 )
         board.pop()
         if score > best:
@@ -754,6 +886,8 @@ def search(
                 HISTORY_SCORE[square_pair] = HISTORY_SCORE.get(square_pair, 0) + depth * depth
             break
 
+    PATH.pop()
+
     if best <= original_alpha:
         flag = TT_UPPER
     elif best >= beta:
@@ -767,7 +901,9 @@ def search(
     return best
 
 
-def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Move | None, bool]:
+def search_root(
+    board: chess.Board, depth: int, clock: Clock
+) -> tuple[chess.Move | None, bool, int]:
     mg = eg = phase = 0
     for square, piece in board.piece_map().items():
         offset = (384 if piece.color else 0) + piece.piece_type * 64 + square
@@ -781,37 +917,49 @@ def search_root(board: chess.Board, depth: int, clock: Clock) -> tuple[chess.Mov
 
     alpha = -MATE - 1
     best_move: chess.Move | None = None
-    entry = TT.get(chess.polyglot.zobrist_hash(board))
+    PATH.clear()
+    pkey = placement_key(board)
+    entry = TT.get(pkey ^ state_key(board))
     tt_move = entry[3] if entry is not None else None
     for move in order_moves(board, list(board.legal_moves), 0, tt_move):
-        d_mg, d_eg, d_phase = move_delta(board, move)
+        d_mg, d_eg, d_phase, d_key = move_delta(board, move)
         board.push(move)
         try:
             score = -search(
                 board, depth - 1, -MATE, -alpha, 1, clock,
-                mg + d_mg, eg + d_eg, phase + d_phase,
+                mg + d_mg, eg + d_eg, phase + d_phase, pkey ^ d_key,
             )
         except TimeUp:
             board.pop()
-            return best_move, False
+            return best_move, False, alpha
         board.pop()
         if best_move is None or score > alpha:
             alpha = score
             best_move = move
-    return best_move, True
+    return best_move, True, alpha
 
 
 def get_move(fen: str, time_left_ms: int) -> str:
-    board = chess.Board(fen)
-    HISTORY.add(chess.polyglot.zobrist_hash(board))
-    KILLERS.clear()
-    for square_pair in HISTORY_SCORE:
-        HISTORY_SCORE[square_pair] >>= 1
-    fallback = next(iter(board.legal_moves)).uci()
+    """Never raises: a crash forfeits the game, so every path returns a string."""
+    try:
+        board = chess.Board(fen)
+        fallback = ""
+        for legal in board.legal_moves:
+            fallback = legal.uci()
+            break
+        if not fallback:
+            return "0000"
+        HISTORY.add(full_key(board))
+        KILLERS.clear()
+        for square_pair in HISTORY_SCORE:
+            HISTORY_SCORE[square_pair] >>= 1
+    except Exception:
+        return "0000"
 
     try:
         remaining_s = time_left_ms / 1000.0
-        budget = max(0.01, min(remaining_s / 12.0, remaining_s * 0.25))
+        reserve = min(TIME_RESERVE, remaining_s * TIME_RESERVE_FRACTION)
+        budget = max(0.01, (remaining_s - reserve) / TIME_DIVISOR)
         start = time.perf_counter()
         clock = Clock(budget)
         chosen = fallback
@@ -819,19 +967,25 @@ def get_move(fen: str, time_left_ms: int) -> str:
 
         stable = 0
         previous = ""
+        best_score = -MATE - 1
         for depth in range(1, MAX_DEPTH):
             elapsed = time.perf_counter() - start
             limit = budget * (0.5 if stable >= STABILITY_CUTOFF else 1.0)
-            if depth > 2 and elapsed + last_depth_s * 8 > limit:
+            if depth > 2 and elapsed + last_depth_s * ITERATION_COST_FACTOR > limit:
                 break
             depth_start = time.perf_counter()
-            move, complete = search_root(board, depth, clock)
-            if complete and move is not None:
+            move, complete, score = search_root(board, depth, clock)
+            # An aborted iteration still searched the best-ordered root moves.
+            # Trust it only when it beat the last completed depth: a root fail-low
+            # means the alternatives it never reached might be better, and the
+            # previous depth's move is then the best answer available.
+            if move is not None and (complete or score > best_score):
                 chosen = move.uci()
                 stable = stable + 1 if chosen == previous else 0
                 previous = chosen
             if not complete:
                 break
+            best_score = score
             last_depth_s = time.perf_counter() - depth_start
         
         return chosen

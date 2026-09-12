@@ -21,5 +21,9 @@ while not board.is_game_over() and ply < 60:
         print("FLAGGED")
         break
     board.push(chess.Move.from_uci(move))
+    if board.is_game_over():
+        break
     board.push(next(iter(board.legal_moves)))
     ply += 2
+
+print(f"finished at ply {ply}, clock left {clock_ms/1000:.3f}s, outcome {board.outcome()}")

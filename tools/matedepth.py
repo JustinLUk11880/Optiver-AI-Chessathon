@@ -18,13 +18,15 @@ for sq, piece in board.piece_map().items():
         eg -= agent.EG_TABLE[off]
     phase += agent.PHASE_WEIGHT[piece.piece_type]
 
+pkey = agent.placement_key(board)
+
 rows = []
 for move in list(board.legal_moves):
-    d_mg, d_eg, d_phase = agent.move_delta(board, move)
+    d_mg, d_eg, d_phase, d_key = agent.move_delta(board, move)
     board.push(move)
     score = -agent.search(
         board, 5, -agent.MATE, agent.MATE, 1, clock,
-        mg + d_mg, eg + d_eg, phase + d_phase,
+        mg + d_mg, eg + d_eg, phase + d_phase, pkey ^ d_key,
     )
     board.pop()
     rows.append((score, move.uci()))

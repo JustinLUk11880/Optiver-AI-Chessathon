@@ -14,5 +14,5 @@ agent.TT.clear()
 clock = agent.Clock(10.0)
 for d in range(1, 7):
     agent.TT.clear()
-    move, complete = agent.search_root(board, d, agent.Clock(10.0))
+    move, complete, _score = agent.search_root(board, d, agent.Clock(10.0))
     print(f"depth {d}: {move} complete={complete}")
